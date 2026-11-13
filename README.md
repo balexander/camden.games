@@ -2,7 +2,7 @@
 
 Quick flash-card rounds for math facts and vocabulary, built for an 8-year-old and the grown-up sitting next to him. He says the answer, the grown-up taps Yes or No, and the app decides which card comes next.
 
-It is a plain static site: no build step, no packages, no server, no accounts.
+It is a plain static site with no build step and no accounts, plus a small Cloudflare Worker that syncs players between devices.
 
 ## What it does
 
@@ -11,7 +11,7 @@ It is a plain static site: no build step, no packages, no server, no accounts.
 - **Two round types:** Practice (15 cards, no clock) or a timed Speed round (60 seconds by default).
 - **Spaced repetition:** each card sits in one of six boxes. A quick right answer moves it up, and it comes back after 8 hours, then 2, 5, 12 and 30 days. A miss sends it back to box one and it returns within the same round.
 - **Players and progress:** any number of players, picked on startup, each with best scores, a score chart and a map of every card.
-- **Saved data:** progress is kept on the device after every answer. Grown-ups > Saved data saves everything as one CSV file and loads it back on any device.
+- **Saved data:** progress is kept on the device after every answer. Grown-ups > Sync across devices keeps it on every device with a family sync code, and Saved data saves everything as one CSV file.
 
 ## Run it
 
@@ -51,6 +51,7 @@ For the App Store later, the same folder can be wrapped with Capacitor on a Mac 
 | `app/core.js` | Game logic with no page access: decks, memory tricks, scheduling, saved-data checks, CSV |
 | `app/words.js` | Built-in vocabulary |
 | `app/sw.js`, `app/manifest.webmanifest`, `app/icons/` | Installable-app shell and offline cache |
+| `worker/index.js`, `wrangler.jsonc` | Cloudflare Worker: serves `app/` and stores synced players in a Durable Object |
 | `serve.mjs` | Local static server for `npm start` |
 | `build-artifact.mjs` | Builds the single-file Claude artifact copy |
 | `test/app.test.mjs` | Tests for the logic, the word list, the CSV format and the app shell |

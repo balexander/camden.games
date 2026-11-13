@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node serve.mjs",
     "test": "node --test",
-    "artifact": "node build-artifact.mjs"
+    "artifact": "node build-artifact.mjs",
+    "dev": "wrangler dev --port 4319"
   },
+  "devDependencies": { "wrangler": "^4" },
   "engines": { "node": ">=22" }
 }
