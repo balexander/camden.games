@@ -54,7 +54,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 .btn:active{transform:translateY(3px);box-shadow:0 1px 0 color-mix(in srgb,var(--blue) 60%,#000)}
 .btn.ghost{background:var(--card);color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
 .btn.warn{background:var(--miss);box-shadow:none;color:var(--card)}
-.btn.mini{font-size:.9rem;padding:6px 12px;border-radius:10px}
+.btn.mini{font-size:.9rem;padding:6px 12px;border-radius:10px;min-height:44px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap} .grow{flex:1;min-width:0} .col{display:flex;flex-direction:column;gap:10px}
 .sheet{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:16px}
 .stat{font:800 1rem var(--display);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -72,7 +72,7 @@ input[type=text],textarea{font:inherit;color:var(--ink);background:var(--card);b
 .goal i{display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid var(--line);margin-right:4px;vertical-align:-2px}
 .goal i.on{background:var(--good);border-color:var(--good)}
 .subject{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:var(--card);border:2px solid var(--line);border-radius:16px}
-.subject button{font:800 1.15rem var(--display);padding:8px;border-radius:11px;color:var(--soft)}
+.subject button{font:800 1.15rem var(--display);padding:8px;min-height:44px;border-radius:11px;color:var(--soft)}
 .subject button[aria-pressed="true"]{background:var(--blue);color:var(--blue-ink)}
 .subject small{display:block;font:700 .75rem/1.2 var(--body)}
 .subject.three{grid-template-columns:repeat(3,1fr)} .subject.three button{font-size:1rem}
@@ -85,14 +85,14 @@ input[type=text],textarea{font:inherit;color:var(--ink);background:var(--card);b
 .bar b{background:var(--h4)} .bar u{background:var(--h2)}
 /* play */
 .top{display:flex;align-items:center;gap:10px}
-.x{width:40px;height:40px;border-radius:50%;font-weight:800;color:var(--soft);background:var(--card);border:2px solid var(--line)}
+.x{width:44px;height:44px;flex:none;border-radius:50%;font-weight:800;color:var(--soft);background:var(--card);border:2px solid var(--line)}
 .clock{flex:1;height:14px;border-radius:7px;background:var(--card);border:2px solid var(--line);overflow:hidden}
 .clock div{height:100%;background:var(--blue);width:100%;border-radius:5px}
 .clock.low div{background:var(--miss)}
-.card{flex:1;min-height:0;background:var(--card);border:3px solid var(--ink);border-radius:22px;box-shadow:0 6px 0 var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;text-align:center;overflow:hidden}
+.card{flex:1;min-height:0;container-type:inline-size;background:var(--card);border:3px solid var(--ink);border-radius:22px;box-shadow:0 6px 0 var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;text-align:center;overflow:hidden}
 .card.good{border-color:var(--good);background:var(--good-wash)} .card.fix{border-color:var(--miss);background:var(--miss-wash)}
-.q{font:800 clamp(2.6rem,13vw,4rem)/1 var(--display);display:flex;gap:.25em;align-items:center;font-variant-numeric:tabular-nums}
-.q .op{color:var(--blue)}
+.q{font:800 clamp(2.4rem,15cqi,4rem)/1 var(--display);display:flex;gap:.25em;align-items:center;font-variant-numeric:tabular-nums}
+.q.long{font-size:clamp(2rem,12.5cqi,4rem)} .q .op{color:var(--blue)}
 .q .ans{min-width:1.5em;padding:0 .15em;border-bottom:5px solid var(--ink);min-height:1em;display:inline-block}
 .card.good .ans{color:var(--good);border-color:var(--good)}
 .word{font:800 clamp(2rem,10.5vw,3.2rem)/1.05 var(--display);display:flex;gap:.3em;align-items:center;justify-content:center;flex-wrap:wrap;overflow-wrap:anywhere;max-width:100%}
@@ -131,7 +131,7 @@ input[type=text],textarea{font:inherit;color:var(--ink);background:var(--card);b
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:10px}
 .tiles div{display:flex;flex-direction:column} .tiles b{font:800 1.6rem var(--display);font-variant-numeric:tabular-nums}
 .tabs{display:flex;gap:6px;flex-wrap:wrap}
-.tabs button{font-weight:800;padding:6px 12px;border-radius:999px;border:2px solid var(--line);background:var(--card)}
+.tabs button{font-weight:800;padding:6px 12px;min-height:44px;border-radius:999px;border:2px solid var(--line);background:var(--card)}
 .tabs button[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:var(--blue-ink)}
 .gridwrap{overflow-x:auto}
 table.heat{border-collapse:separate;border-spacing:2px;font:700 .7rem var(--body);font-variant-numeric:tabular-nums;margin:0 auto}
@@ -154,6 +154,18 @@ svg text{font:700 11px var(--body);fill:var(--soft)}
 @keyframes fall{to{transform:translateY(105vh) rotate(540deg)}}
 @media (prefers-reduced-motion:reduce){.conf{display:none}.shake{animation:none}}
 @media (max-height:640px){.tf{grid-template-columns:repeat(5,11px)}.d{width:11px;height:11px}.arr .d{width:8px;height:8px}.hint{font-size:.95rem}.def{font-size:1.15rem}}
+/* phone turned sideways: the card takes the left side and the answer buttons the right */
+@media (orientation:landscape) and (max-height:520px){
+  #app.play{max-width:900px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);grid-template-rows:auto 1fr auto;column-gap:16px;row-gap:10px}
+  #app.play>.top{grid-column:1/-1}
+  #app.play>.card{grid-column:1;grid-row:2/4}
+  #app.play>.peek{grid-column:2;grid-row:2;align-self:end}
+  #app.play>.marks,#app.play>.pad,#app.play>.choices{grid-column:2;grid-row:3}
+  #app.play>.marks{height:100%;grid-row:2/4;align-content:end}
+  #app.play>.peek~.marks{grid-row:3}
+  .pad button{height:clamp(44px,13vh,60px)}
+  .marks button{height:clamp(84px,30vh,140px)}
+}
 </style>
 <!--/head-->
 </head>
@@ -316,7 +328,7 @@ function playView(p){
       :showHint?`${trick(m.hint)}${f.ex?`<p class="ex">${sentence(f)}</p>`:''}`
       :mode==='fade'&&(m.hint||f.ex)?`<button class="btn ghost" data-act="hint">💡 Hint</button>`:'';
   }else{
-    face=`<div class="q"><span>${c.x}</span><span class="op">${Core.OPS[f.op].sym}</span><span>${c.y}</span><span class="op">=</span><span class="ans ${c.shake?'shake':''}" id="ans" aria-live="polite">${c.phase==='good'||coach&&c.phase==='fix'?f.ans:esc(c.typed)}</span></div>`;
+    face=`<div class="q${String(c.x).length+String(c.y).length+String(f.ans).length>5?' long':''}"><span>${c.x}</span><span class="op">${Core.OPS[f.op].sym}</span><span>${c.y}</span><span class="op">=</span><span class="ans ${c.shake?'shake':''}" id="ans" aria-live="polite">${c.phase==='good'||coach&&c.phase==='fix'?f.ans:esc(c.typed)}</span></div>`;
     help=c.phase==='fix'?`<p class="fixline">${coach?'Say it together, then tap Next.':`${G.skipped?'Here it is.':'Not quite.'} Type ${f.ans} to keep going.`}</p><div class="vis">${picture(f,c.x,c.y)}</div>${trick(m.reveal)}`
       :showHint?`<div class="vis">${picture(f,c.x,c.y)}</div>${trick(c.phase==='good'?m.reveal:m.hint)}`
       :mode==='fade'?`<button class="btn ghost" data-act="hint">💡 Hint</button>`:'';
