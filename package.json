@@ -1,0 +1,12 @@
+{
+  "name": "fact-dash",
+  "private": true,
+  "type": "module",
+  "description": "One-minute flash-card rounds for math facts and vocabulary, with a memory trick on every card.",
+  "scripts": {
+    "start": "node serve.mjs",
+    "test": "node --test",
+    "artifact": "node build-artifact.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

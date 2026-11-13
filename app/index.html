@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- iPhone home-screen app: icon, full screen, offline (sw.js). -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fact Dash">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111728" media="(prefers-color-scheme: dark)">
+<style>html{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}</style>
+<!--page-->
+<title>Fact Dash</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@500;700;800&display=swap">
+<style>
+/* Layout: one phone-sized column on a sheet of graph paper; the flash card is the only raised object. */
+:root{
+  --paper:#f3f6fb; --grid:#dbe4f2; --card:#ffffff; --ink:#1b2540; --soft:#5b6785; --line:#c9d3e6;
+  --blue:#2457d6; --blue-ink:#ffffff; --blue-wash:#e3ebff; --amber:#e08a00; --good:#14804a; --good-wash:#dcf5e7;
+  --miss:#c2410c; --miss-wash:#ffe8dc; --star:#b97700;
+  --h1:#cfdcff; --h2:#8eaafa; --h3:#4b77e6; --h4:#1b3f9e; --h4-ink:#ffffff;
+  --display:"Baloo 2","Trebuchet MS","Segoe UI",sans-serif; --body:"Nunito","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#111728; --grid:#1c2540; --card:#1c2440; --ink:#eef2ff; --soft:#a3aecb; --line:#34406a;
+  --blue:#7ea2ff; --blue-ink:#0c1530; --blue-wash:#243260; --amber:#ffb84d; --good:#5fd699; --good-wash:#143a2a;
+  --miss:#ff9a6b; --miss-wash:#47231a; --star:#ffcf5c;
+  --h1:#26345f; --h2:#3c58a8; --h3:#6f93f5; --h4:#b9cbff; --h4-ink:#0c1530; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#111728; --grid:#1c2540; --card:#1c2440; --ink:#eef2ff; --soft:#a3aecb; --line:#34406a;
+  --blue:#7ea2ff; --blue-ink:#0c1530; --blue-wash:#243260; --amber:#ffb84d; --good:#5fd699; --good-wash:#143a2a;
+  --miss:#ff9a6b; --miss-wash:#47231a; --star:#ffcf5c;
+  --h1:#26345f; --h2:#3c58a8; --h3:#6f93f5; --h4:#b9cbff; --h4-ink:#0c1530; color-scheme:dark}
+html,body{height:100%}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:500 16px/1.45 var(--body);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:22px 22px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;overscroll-behavior:none;-webkit-text-size-adjust:100%}
+#app{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;gap:16px;padding-block:16px}
+#app.play{height:100%;gap:10px;padding-block:10px}
+h1,h2,h3{font-family:var(--display);line-height:1.1;margin:0;text-wrap:balance}
+h1{font-size:2.3rem;font-weight:800} h2{font-size:1.5rem;font-weight:800} h3{font-size:1.1rem;font-weight:600}
+p{margin:0} .soft{color:var(--soft)} .small{font-size:.875rem}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.btn{font:800 1.1rem var(--display);background:var(--blue);color:var(--blue-ink);border-radius:14px;padding:12px 20px;box-shadow:0 4px 0 color-mix(in srgb,var(--blue) 60%,#000)}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 color-mix(in srgb,var(--blue) 60%,#000)}
+.btn.ghost{background:var(--card);color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
+.btn.warn{background:var(--miss);box-shadow:none;color:var(--card)}
+.btn.mini{font-size:.9rem;padding:6px 12px;border-radius:10px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap} .grow{flex:1;min-width:0} .col{display:flex;flex-direction:column;gap:10px}
+.sheet{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:16px}
+.stat{font:800 1rem var(--display);font-variant-numeric:tabular-nums;white-space:nowrap}
+.star{color:var(--star)}
+/* who */
+.who{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+.who button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 8px}
+.who .new{border-style:dashed;color:var(--blue)} .who .new .av{font-family:var(--display);font-weight:800}
+.av{font-size:2.6rem;line-height:1.1}
+.avs{display:flex;flex-wrap:wrap;gap:6px}
+.avs button{font-size:1.7rem;width:48px;height:48px;border-radius:12px;border:2px solid transparent}
+.avs button[aria-pressed="true"]{border-color:var(--blue);background:var(--blue-wash)}
+input[type=text],textarea{font:inherit;color:var(--ink);background:var(--card);border:2px solid var(--line);border-radius:12px;padding:10px 12px;width:100%}
+/* home */
+.goal i{display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid var(--line);margin-right:4px;vertical-align:-2px}
+.goal i.on{background:var(--good);border-color:var(--good)}
+.subject{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:var(--card);border:2px solid var(--line);border-radius:16px}
+.subject button{font:800 1.15rem var(--display);padding:8px;border-radius:11px;color:var(--soft)}
+.subject button[aria-pressed="true"]{background:var(--blue);color:var(--blue-ink)}
+.subject small{display:block;font:700 .75rem/1.2 var(--body)}
+.subject.three{grid-template-columns:repeat(3,1fr)} .subject.three button{font-size:1rem}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mode{display:flex;flex-direction:column;gap:6px;text-align:left;padding:14px;min-width:0}
+.mode:active{transform:translateY(2px)}
+.mode.wide{grid-column:1/-1;flex-direction:row;align-items:center;gap:14px}
+.mode .sym{font:800 2.4rem/1 var(--display);color:var(--blue)}
+.bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--paper);gap:2px}
+.bar b{background:var(--h4)} .bar u{background:var(--h2)}
+/* play */
+.top{display:flex;align-items:center;gap:10px}
+.x{width:40px;height:40px;border-radius:50%;font-weight:800;color:var(--soft);background:var(--card);border:2px solid var(--line)}
+.clock{flex:1;height:14px;border-radius:7px;background:var(--card);border:2px solid var(--line);overflow:hidden}
+.clock div{height:100%;background:var(--blue);width:100%;border-radius:5px}
+.clock.low div{background:var(--miss)}
+.card{flex:1;min-height:0;background:var(--card);border:3px solid var(--ink);border-radius:22px;box-shadow:0 6px 0 var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;text-align:center;overflow:hidden}
+.card.good{border-color:var(--good);background:var(--good-wash)} .card.fix{border-color:var(--miss);background:var(--miss-wash)}
+.q{font:800 clamp(2.6rem,13vw,4rem)/1 var(--display);display:flex;gap:.25em;align-items:center;font-variant-numeric:tabular-nums}
+.q .op{color:var(--blue)}
+.q .ans{min-width:1.5em;padding:0 .15em;border-bottom:5px solid var(--ink);min-height:1em;display:inline-block}
+.card.good .ans{color:var(--good);border-color:var(--good)}
+.word{font:800 clamp(2rem,10.5vw,3.2rem)/1.05 var(--display);display:flex;gap:.3em;align-items:center;justify-content:center;flex-wrap:wrap;overflow-wrap:anywhere;max-width:100%}
+.say{font-size:1.3rem;width:44px;height:44px;border-radius:50%;background:var(--blue-wash)}
+.pos{font:700 .8rem var(--body);color:var(--soft);letter-spacing:.06em;text-transform:uppercase}
+.def{font:800 1.35rem/1.2 var(--display);max-width:22em} .card.good .def{color:var(--good)}
+.ex{font-style:italic;color:var(--soft);max-width:26em} .ex b{font-style:normal;color:var(--ink)}
+.shake{animation:shake .3s}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.tag{font:800 .75rem var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--blue)}
+.hint{font-size:1.05rem;font-weight:700;max-width:26em}
+.fixline{font:800 1.05rem var(--body);color:var(--miss)}
+.vis{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center}
+.tf{display:grid;grid-template-columns:repeat(5,16px);gap:3px;padding:4px;border:2px solid var(--line);border-radius:6px}
+.arr{display:grid;gap:3px}
+.d{width:16px;height:16px;border-radius:50%;background:transparent;border:2px solid transparent}
+.arr .d{width:10px;height:10px}
+.d.a{background:var(--blue)} .d.b{background:var(--amber)} .d.e{border-color:var(--line);border-style:dotted}
+.d.gone{border-color:var(--miss);background:linear-gradient(45deg,transparent 42%,var(--miss) 42% 58%,transparent 58%)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad button{font:800 1.7rem var(--display);height:clamp(46px,8.5vh,64px);border-radius:14px;background:var(--card);border:2px solid var(--line);box-shadow:0 3px 0 var(--line)}
+.pad button:active{transform:translateY(3px);box-shadow:none;background:var(--blue-wash)}
+.pad .alt{font-size:1rem;color:var(--soft)}
+.marks{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.marks button{font:800 1.9rem var(--display);height:clamp(84px,17vh,130px);border-radius:18px;color:var(--card)}
+.marks button:active{transform:translateY(3px);filter:brightness(.92)}
+.marks .yes{background:var(--good)} .marks .no{background:var(--miss)} .marks .next{grid-column:1/-1;background:var(--blue);color:var(--blue-ink)}
+.peek{text-align:center;font-weight:700;color:var(--soft)} .peek b{color:var(--ink);font:800 1.2rem var(--display);font-variant-numeric:tabular-nums;margin-left:4px}
+.choices{display:grid;gap:8px}
+.choices button{font-weight:700;font-size:1.05rem;text-align:left;padding:12px 14px;min-height:56px;border-radius:14px;background:var(--card);border:2px solid var(--line);box-shadow:0 3px 0 var(--line)}
+.choices button:active{transform:translateY(3px);box-shadow:none;background:var(--blue-wash)}
+.choices button.right{border-color:var(--good);background:var(--good-wash)}
+.count{position:fixed;inset:0;display:grid;place-items:center;background:var(--paper);font:800 7rem var(--display);color:var(--blue);z-index:5}
+/* done + stats */
+.big{font:800 5rem/1 var(--display);color:var(--blue);font-variant-numeric:tabular-nums}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:10px}
+.tiles div{display:flex;flex-direction:column} .tiles b{font:800 1.6rem var(--display);font-variant-numeric:tabular-nums}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{font-weight:800;padding:6px 12px;border-radius:999px;border:2px solid var(--line);background:var(--card)}
+.tabs button[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:var(--blue-ink)}
+.gridwrap{overflow-x:auto}
+table.heat{border-collapse:separate;border-spacing:2px;font:700 .7rem var(--body);font-variant-numeric:tabular-nums;margin:0 auto}
+.heat th{color:var(--soft);font-weight:700;min-width:16px}
+.heat td{padding:0}
+.heat td button{display:block;width:100%;min-width:16px;height:22px;border-radius:4px;background:var(--paper);border:1px solid var(--line);font:inherit;color:var(--soft)}
+.heat.wide td button{min-width:28px;height:28px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{font:700 .9rem var(--body);padding:5px 11px;border-radius:999px;background:var(--paper);border:1px solid var(--line);color:var(--soft)}
+.map .b1{background:var(--h1);border-color:var(--h1);color:var(--ink)} .map .b2{background:var(--h2);border-color:var(--h2);color:var(--ink)}
+.map .b3{background:var(--h3);border-color:var(--h3);color:var(--h4-ink)} .map .b4{background:var(--h4);border-color:var(--h4);color:var(--h4-ink)}
+.map button[aria-pressed="true"]{outline:3px solid var(--amber);outline-offset:1px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.8rem;color:var(--soft)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-1px;border:1px solid var(--line)}
+.mylist{display:flex;flex-direction:column;gap:8px}
+.mylist div{display:flex;gap:10px;align-items:center;padding-top:8px;border-top:1px solid var(--line)}
+ol.steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:4px}
+svg text{font:700 11px var(--body);fill:var(--soft)}
+.conf{position:fixed;top:-20px;width:10px;height:14px;border-radius:2px;z-index:9;animation:fall 1.8s ease-in forwards;pointer-events:none}
+@keyframes fall{to{transform:translateY(105vh) rotate(540deg)}}
+@media (prefers-reduced-motion:reduce){.conf{display:none}.shake{animation:none}}
+@media (max-height:640px){.tf{grid-template-columns:repeat(5,11px)}.d{width:11px;height:11px}.arr .d{width:8px;height:8px}.hint{font-size:.95rem}.def{font-size:1.15rem}}
+</style>
+<!--/head-->
+</head>
+<body>
+<!--body-->
+<main id="app"></main>
+<script src="words.js"></script>
+<script src="core.js"></script>
+<script>
+(()=>{
+const SPOKEN=1500,KEY='factdash.v1',GOAL=3,CHILL=15,AVS=['🦊','🐼','🦖','🐙','🦁','🐸','🦄','🐧','🚀','⚽','🐯','🦉'];
+const M=Core.MODES,TILES={math:['add','sub','mul','div','mix'],words:['v1','v2','v3','mine','vmix']},POS={adj:'describing word',verb:'action word',noun:'naming word'};
+const app=document.getElementById('app'),esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+let db={v:1,players:[],cur:null,words:[]},view='who',ui={av:AVS[0],tab:'add',confirm:null,cell:null,adding:false,msg:'',pending:null},G=null,timer=null,actx=null,wake=null;
+try{const raw=JSON.parse(localStorage.getItem(KEY));if(raw?.v===1&&Array.isArray(raw.players))db=raw;}catch{}
+// Saved data is checked field by field on the way in, which also fills in anything an older save lacks.
+const fill=()=>{db.words=Core.cleanWords(db.words);db.gone=db.gone&&typeof db.gone==='object'?db.gone:{};db.players=(Array.isArray(db.players)?db.players:[]).map(Core.cleanPlayer).filter(Boolean);if(!db.players.some(p=>p.id===db.cur))db.cur=null;};fill();
+const store=()=>{try{localStorage.setItem(KEY,JSON.stringify(db));}catch{}};
+// save(p) records a change to one player and saveMeta() a change to the shared word list. Both also go to the account store when there is one.
+const save=p=>{if(p){p.updated=Date.now();push(p.id);}store();};
+const saveMeta=()=>{db.metaUpdated=Date.now();push('meta');store();};
+const me=()=>db.players.find(p=>p.id===db.cur);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const newPlayer=(name,av)=>Core.cleanPlayer({id:uid(),name,av,created:Date.now()});
+const opts=p=>({stretch:p.set.stretch,custom:db.words,range:p.set.range});
+// Adding, subtracting and the math mix keep a separate best score for each number range.
+const rangeOf=(p,m)=>m==='add'||m==='sub'||m==='mix'?p.set.range:'all',bestKey=(p,m)=>m+':'+secsOf(p)+(rangeOf(p,m)==='all'?'':':'+rangeOf(p,m));
+// A speed round runs against the clock; practice is a fixed number of cards with no clock (stored as 0 seconds).
+const secsOf=p=>p.set.round==='practice'?0:p.set.secs;
+const standalone=()=>navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
+const canSpeak='speechSynthesis' in window;
+
+function beep(notes){const p=me();if(!p?.set.sound)return;try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();let t=actx.currentTime;for(const [f,d] of notes){const o=actx.createOscillator(),g=actx.createGain();o.type='triangle';o.frequency.value=f;g.gain.setValueAtTime(.12,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d);t+=d*.8;}}catch{}}
+function speak(text){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=.85;speechSynthesis.speak(u);}catch{}}
+
+/* ---------- keeping the data ----------
+   Every change is written to this browser's storage straight away. Inside Claude the page can also keep a private
+   copy in the viewer's account store, one document per player, so progress survives a cleared browser and follows
+   the person to other devices. Whichever copy of a player was changed last wins. */
+let col=null,sync=window.claude?.use?'checking':'local',chain=Promise.resolve(),flushTimer=null;const dirty=new Set();
+function push(id){if(!col)return;dirty.add(id);clearTimeout(flushTimer);flushTimer=setTimeout(flush,700);}
+function flush(){clearTimeout(flushTimer);const ids=[...dirty];dirty.clear();
+  for(const id of ids)chain=chain.then(()=>writeDoc(id)).then(()=>{if(sync==='error'){sync='account';note();}},()=>{sync='error';dirty.add(id);note();});}
+function writeDoc(id){
+  if(id==='meta')return col.doc('meta').set({updated:db.metaUpdated||1,json:JSON.stringify({words:db.words,gone:db.gone})});
+  const p=db.players.find(x=>x.id===id);return p?col.doc('p_'+id).set({name:p.name,updated:p.updated||1,json:JSON.stringify(p)}):col.doc('p_'+id).delete();
+}
+async function connect(){
+  if(!window.claude?.use)return;
+  try{
+    const [store2,user]=await Promise.all([claude.use('db'),claude.use('user')]),uid=store2&&user?await user.id():null;
+    if(!uid){sync='local';return note(true);}
+    const c=store2.collection('data/users/'+uid),snap=await Promise.race([c.get(),new Promise((_,no)=>setTimeout(()=>no(Error('timeout')),10000))]);
+    col=c;merge(snap.docs);sync='account';
+  }catch{sync='error';}
+  note(true);
+}
+function merge(docs){
+  const remote={};let meta=null;
+  for(const d of docs){try{const b=d.data();if(!b)continue;if(d.id==='meta')meta={...JSON.parse(b.json),updated:+b.updated||0};else if(d.id.startsWith('p_')){const p=Core.cleanPlayer(JSON.parse(b.json));if(p)remote[p.id]=p;}}catch{}}
+  const theirs=meta&&typeof meta.gone==='object'&&meta.gone||{},gone={...theirs};for(const [k,v] of Object.entries(db.gone))gone[k]=Math.max(+v||0,+gone[k]||0);
+  let metaDirty=Object.keys(gone).some(k=>gone[k]!==theirs[k]);
+  if(meta&&meta.updated>(db.metaUpdated||0)){db.words=Core.cleanWords(meta.words);db.metaUpdated=meta.updated;}else if((db.metaUpdated||0)>(meta?.updated||0))metaDirty=true;
+  db.gone=gone;
+  const busy=view==='play'||view==='done'?db.cur:null,out=[];   // never swap out a player in the middle of a round
+  for(const l of db.players){const r=remote[l.id];delete remote[l.id];l.updated=l.updated||1;
+    if(l.id!==busy&&gone[l.id]>=l.updated)continue;                          // removed on another device
+    if(r&&l.id!==busy&&r.updated>l.updated)out.push(r);                      // changed more recently elsewhere
+    else{out.push(l);if(!r||l.updated>r.updated)push(l.id);}}
+  for(const r of Object.values(remote)){if(gone[r.id]>=r.updated)push(r.id);else out.push(r);}
+  db.players=out;if(!me()){db.cur=null;if(view!=='who'){view='who';G=null;}}
+  if(metaDirty)push('meta');store();
+}
+// Redraw after data arrives, keeping whatever is being typed. Mid-round, only the status line changes.
+function note(redraw){
+  if(redraw&&view!=='play'&&view!=='done'){const keep=[...app.querySelectorAll('input[type=text],textarea')].map(e=>[e.id,e.value]),focus=document.activeElement?.id;
+    render();for(const [id,v] of keep){const e=document.getElementById(id);if(e)e.value=v;}if(focus)document.getElementById(focus)?.focus();return;}
+  const el=document.getElementById('syncNote');if(el)el.textContent=statusText(true);
+}
+function statusText(short){
+  if(sync==='account')return short?'Saved to your Claude account.':'Saved to your Claude account after every round. It stays between sessions and follows you to other devices.';
+  if(sync==='checking')return 'Looking for saved players…';
+  if(sync==='error')return short?'Could not reach your Claude account. Saved on this device for now.':'Could not reach your Claude account just now. Changes are kept on this device and sent when the page next opens.';
+  return window.claude?.use?(short?'Saved in this browser only.':'Saved in this browser only. Open the page signed in to Claude to keep it between sessions, or save a CSV file.')
+    :(short?'Saved on this device.':'Saved on this device after every answer. Save a CSV file to keep your own copy.');
+}
+const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
+function describe(d){const who=d.players.map(p=>`${p.name} (${plural(p.rounds.length,'round')})`),parts=[...(who.length?[who.join(', ')]:[]),...(d.words.length?[plural(d.words.length,'word')+' of your own']:[])];return `This file has ${parts.join(' and ')}.`;}
+const say=t=>{ui.msg=t;const el=document.getElementById('csvMsg');if(el)el.textContent=t;};
+async function saveCSV(){
+  const text=Core.toCSV(db),name=`fact-dash-${Core.dayKey(Date.now())}.csv`;
+  if(!db.players.length&&!db.words.length)return say('There is nothing to save yet.');
+  if(window.claude?.use){   // inside Claude a page cannot download by itself; the viewer confirms each file
+    const dl=await claude.use('downloads').catch(()=>null);if(!dl)return say('Saving files is not available in this view.');
+    try{await dl.save({filename:name,data:text});return say(`Saved ${name}.`);}catch(e){return say(e?.code==='declined'?'Nothing was saved.':e?.code==='rate_limited'?'A save is already waiting. Answer it, then try again.':'The file could not be saved here.');}
+  }
+  try{const file=new File([text],name,{type:'text/csv'});
+    if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file]});return say(`Saved ${name}.`);}
+    const a=document.createElement('a'),url=URL.createObjectURL(file);a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);say(`Saved ${name} to your downloads.`);
+  }catch(e){say(e?.name==='AbortError'?'Nothing was saved.':'The file could not be saved here.');}
+}
+
+/* ---------- pictures: ten-frames and arrays ---------- */
+function frames(n,cls){let h='';for(let f=0;f<Math.ceil(n/10);f++){h+='<div class="tf">';for(let i=f*10;i<f*10+10;i++)h+=`<i class="d ${i<n?cls(i):'e'}"></i>`;h+='</div>';}return h;}
+function array(rows,cols){return `<div class="arr" style="grid-template-columns:repeat(${Math.min(cols,10)},auto)">${'<i class="d a"></i>'.repeat(rows*cols)}</div>`;}
+function picture(f,x,y){
+  if(f.op==='add')return frames(x+y,i=>i<x?'a':'b');
+  if(f.op==='sub')return frames(f.a,i=>i<f.a-f.b?'a':'gone');
+  if(f.op==='mul')return array(x,y);
+  return array(f.ans,f.b);
+}
+// The example sentence with the word in bold, whatever its ending (chuckle, chuckled).
+function sentence(f){const stem=f.w.replace(/[ey]$/,'').replace(/[^a-z]/gi,''),i=stem?f.ex.search(new RegExp('\\b'+stem,'i')):-1;if(i<0)return esc(f.ex);const end=i+f.ex.slice(i).search(/[^a-z]|$/i);return esc(f.ex.slice(0,i))+'<b>'+esc(f.ex.slice(i,end))+'</b>'+esc(f.ex.slice(end));}
+const label=f=>f.kind==='vocab'?esc(f.w):`${f.a} ${Core.OPS[f.op].sym} ${f.b} = ${f.ans}`;
+
+/* ---------- screens ---------- */
+function render(){
+  app.className=view;const p=me();
+  if(view==='who'||!p)return app.innerHTML=whoView();
+  app.innerHTML={home:homeView,play:playView,done:doneView,stats:statsView,settings:settingsView,words:wordsView}[view](p);
+}
+function whoView(){
+  const form=`<form class="sheet col" id="addForm"><h3>${db.players.length?'New player':'Who is playing?'}</h3>
+    <label class="col" for="pname"><span class="small soft">Your name</span><input type="text" id="pname" maxlength="14" autocomplete="off" placeholder="Type your name"></label>
+    <div class="avs" role="group" aria-label="Pick a buddy">${AVS.map(a=>`<button type="button" data-act="av" data-v="${a}" aria-pressed="${ui.av===a}">${a}</button>`).join('')}</div>
+    <div class="row"><button class="btn" type="submit">Let's go</button>${db.players.length?'<button class="btn ghost" type="button" data-act="cancelAdd">Cancel</button>':''}</div></form>`;
+  return `<header class="col"><h1>Fact Dash</h1><p class="soft">${db.players.length?'Who is playing?':'Math and words, one quick round at a time.'}</p></header>
+    ${db.players.length?`<div class="who">${db.players.map(p=>`<button class="sheet" data-act="pick" data-v="${p.id}"><span class="av">${esc(p.av||AVS[0])}</span><h3>${esc(p.name)}</h3><span class="stat"><span class="star">★</span> ${p.stars}</span><span class="small soft">${Core.level(p.stars).name}</span></button>`).join('')}${ui.adding?'':'<button class="sheet new" data-act="add"><span class="av">＋</span><h3>New player</h3><span class="small soft">Start from zero</span></button>'}</div>`:''}
+    ${ui.adding||!db.players.length?form:''}
+    <p class="small soft" id="syncNote">${statusText(true)}</p>`;
+}
+function homeView(p){
+  const now=Date.now(),today=p.days[Core.dayKey(now)]||0,lv=Core.level(p.stars),streak=Core.dayStreak(p.days,now),secs=secsOf(p),o=opts(p);
+  const tiles=TILES[p.subject].map(m=>{
+    const md=M[m],dk=md.of?md.of.flatMap(x=>Core.items(x,o)):Core.items(m,o),ms=Core.mastery(p.cards,dk),best=p.best[bestKey(p,m)];
+    if(m==='mine'&&!dk.length)return `<button class="sheet mode" data-act="go" data-v="words"><span class="sym">${md.sym}</span><h3>${md.name}</h3><span class="small soft">Add this week's school words</span></button>`;
+    const bar=`<div class="bar" role="img" aria-label="${ms.strong} strong, ${ms.learning} learning, ${ms.total} cards"><b style="width:${ms.strong/ms.total*100}%"></b><u style="width:${ms.learning/ms.total*100}%"></u></div>`;
+    return md.of?`<button class="sheet mode wide" data-act="start" data-v="${m}"><span class="sym">${md.sym}</span><span class="col grow" style="gap:4px"><h3>${md.name}</h3><span class="small soft">Everything you have practiced${best!=null?` · best ${best}`:''}</span></span></button>`
+      :`<button class="sheet mode" data-act="start" data-v="${m}"><span class="row" style="justify-content:space-between"><span class="sym">${md.sym}</span><span class="stat soft">${best!=null?'best '+best:''}</span></span><h3>${md.name}</h3>${bar}<span class="small soft">${ms.strong} of ${ms.total} strong</span></button>`;
+  }).join('');
+  const tip=!db.tipOff&&!standalone()&&self===top&&/iphone|ipad|ipod/i.test(navigator.userAgent)?`<div class="sheet row"><span class="grow small"><b>Make it an app.</b> Tap Share, then Add to Home Screen.</span><button class="btn ghost mini" data-act="tipOff">Got it</button></div>`:'';
+  return `<header class="row"><button class="av" data-act="who" aria-label="Switch player">${esc(p.av||AVS[0])}</button><div class="grow"><h2>${esc(p.name)}</h2><span class="small soft">Level ${lv.n} ${lv.name}${lv.next?` · ${lv.next-p.stars} ★ to go`:''}</span></div><span class="stat"><span class="star">★</span> ${p.stars}</span><span class="stat" title="Days in a row">🔥 ${streak}</span></header>
+    ${tip}<div class="sheet row goal"><span class="grow"><b>Today's dashes</b> <span class="small soft">${today>=GOAL?'Done for today. Nice work!':`${GOAL-today} to go`}</span></span><span>${Array.from({length:GOAL},(_,i)=>`<i class="${i<today?'on':''}"></i>`).join('')}</span></div>
+    <div class="subject" role="group" aria-label="Subject"><button data-act="subject" data-v="math" aria-pressed="${p.subject==='math'}">Math</button><button data-act="subject" data-v="words" aria-pressed="${p.subject==='words'}">Words</button></div>
+    <div class="subject" role="group" aria-label="Round type"><button data-act="round" data-v="practice" aria-pressed="${!secs}">Practice<small>${CHILL} cards, no clock</small></button><button data-act="round" data-v="speed" aria-pressed="${!!secs}">Speed round<small>${p.set.secs} seconds on the clock</small></button></div>
+    ${p.subject==='math'?`<div class="col" style="gap:4px"><span class="small soft">Numbers for adding and subtracting</span><div class="subject three" role="group" aria-label="Numbers for adding and subtracting">${[['low','Up to 10'],['high',`11 to ${p.set.stretch?40:20}`],['all','All']].map(([v,l])=>`<button data-act="range" data-v="${v}" aria-pressed="${p.set.range===v}">${l}</button>`).join('')}</div></div>`:''}
+    <div class="modes">${tiles}</div>
+    <div class="row"><button class="btn ghost" data-act="go" data-v="stats">My progress</button><button class="btn ghost" data-act="go" data-v="settings">Grown-ups</button></div>`;
+}
+function playView(p){
+  if(G.count)return `<div class="count" aria-live="polite">${G.count}</div>`;
+  const c=G.cur,f=c.fact,m=c.mn,coach=p.set.answer==='coach',word=f.kind==='vocab',mode=p.set.hints;
+  const showHint=c.phase!=='ask'||c.hintOpen||mode==='always'||(mode==='fade'&&c.wasBox<3);
+  const trick=text=>text?`${m.tag?`<span class="tag">${m.tag}</span>`:''}<p class="hint">${esc(text)}</p>`:'';
+  let face,help;
+  if(word){
+    face=`<div class="word"><span>${esc(f.w)}</span>${canSpeak?'<button class="say" data-act="say" aria-label="Hear the word">🔊</button>':''}</div>${f.pos?`<span class="pos">${POS[f.pos]}</span>`:''}`;
+    help=c.phase==='fix'?`<p class="def">${esc(f.def)}</p><p class="fixline">${coach?'Say it together, then tap Next.':'Read it out loud, then tap Next.'}</p>${trick(m.reveal)}`
+      :c.phase==='good'?`<p class="def">${esc(f.def)}</p>${trick(m.reveal)}`
+      :showHint?`${trick(m.hint)}${f.ex?`<p class="ex">${sentence(f)}</p>`:''}`
+      :mode==='fade'&&(m.hint||f.ex)?`<button class="btn ghost" data-act="hint">💡 Hint</button>`:'';
+  }else{
+    face=`<div class="q"><span>${c.x}</span><span class="op">${Core.OPS[f.op].sym}</span><span>${c.y}</span><span class="op">=</span><span class="ans ${c.shake?'shake':''}" id="ans" aria-live="polite">${c.phase==='good'||coach&&c.phase==='fix'?f.ans:esc(c.typed)}</span></div>`;
+    help=c.phase==='fix'?`<p class="fixline">${coach?'Say it together, then tap Next.':`${G.skipped?'Here it is.':'Not quite.'} Type ${f.ans} to keep going.`}</p><div class="vis">${picture(f,c.x,c.y)}</div>${trick(m.reveal)}`
+      :showHint?`<div class="vis">${picture(f,c.x,c.y)}</div>${trick(c.phase==='good'?m.reveal:m.hint)}`
+      :mode==='fade'?`<button class="btn ghost" data-act="hint">💡 Hint</button>`:'';
+  }
+  const next=`<div class="marks"><button class="next" data-act="nextCard">Next →</button></div>`;
+  const controls=c.phase==='fix'&&(coach||word)?next
+    :coach?`${p.set.peek?`<p class="peek">${word?'Means':'Answer'} <b>${esc(f.ans)}</b></p>`:''}<div class="marks"><button class="no" data-act="mark" data-v="no">✗ No</button><button class="yes" data-act="mark" data-v="yes">✓ Yes</button></div>`
+    :word?`<div class="choices">${c.choices.map((d,i)=>`<button data-act="choose" data-v="${i}" class="${c.phase==='good'&&d===f.def?'right':''}">${esc(d)}</button>`).join('')}</div>`
+    :`<div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-act="key" data-v="${n}">${n}</button>`).join('')}<button class="alt" data-act="key" data-v="back" aria-label="Erase">⌫</button><button data-act="key" data-v="0">0</button><button class="alt" data-act="key" data-v="skip">Show me</button></div>`;
+  const clock=G.secs?`<div class="clock ${G.left<10000?'low':''}" role="timer" aria-label="Time left"><div id="clockFill" style="width:${G.left/(G.secs*1000)*100}%"></div></div>`:`<div class="grow stat soft">Card ${Math.min(G.n+1,CHILL)} of ${CHILL}</div>`;
+  return `<div class="top"><button class="x" data-act="quit" aria-label="Stop">✕</button>${clock}<span class="stat">✓ <span id="score">${G.right}</span></span><span class="stat" title="In a row">🔥 ${G.streak}</span></div>
+    <div class="card ${c.phase==='ask'?'':c.phase}">${face}${help}</div>
+    ${controls}`;
+}
+function doneView(p){
+  const r=G.result,missed=[...new Map(G.log.filter(l=>!l.ok).map(l=>[l.fact.key,l.fact])).values()].slice(0,4);
+  const line=r.record?(r.prev==null?'Your first score. That is the one to beat!':`New record! You beat ${r.prev}.`):r.score===r.prev?`You tied your best of ${r.prev}!`:`Your best is ${r.prev}. Only ${r.prev-r.score} more to beat it.`;
+  const note=f=>f.kind==='vocab'?`<b>${esc(f.w)}</b>: ${esc(f.def)}`:`<b>${label(f)}</b>`;
+  return `<header class="col" style="align-items:center;text-align:center"><span class="av">${esc(p.av||AVS[0])}</span><div class="big">${r.score}</div><h2>${G.secs?`right in ${G.secs} seconds`:`right out of ${CHILL}`}</h2><p>${line}</p></header>
+    <div class="sheet tiles"><div><b><span class="star">★</span> +${r.stars}</b><span class="small soft">stars earned</span></div><div><b>🔥 ${G.bestStreak}</b><span class="small soft">best run</span></div><div><b>${r.up}</b><span class="small soft">${M[G.mode].subject==='words'?'words':'facts'} got stronger</span></div></div>
+    ${r.goalHit?'<p class="sheet"><b>Today\'s dashes are done.</b> <span class="soft">Come back tomorrow to keep your streak.</span></p>':''}
+    ${missed.length?`<div class="sheet col"><h3>Ones to remember</h3>${missed.map(f=>`<p>${note(f)}<br><span class="small soft">${esc(Core.mnemonic(f).reveal)}</span></p>`).join('')}</div>`:''}
+    <div class="row"><button class="btn" data-act="start" data-v="${G.mode}">Dash again</button><button class="btn ghost" data-act="go" data-v="home">Home</button><button class="btn ghost" data-act="csvSave">Save CSV</button></div>
+    <p class="small soft" id="csvMsg" aria-live="polite">${esc(ui.msg||statusText(true))}</p>`;
+}
+const boxClass=b=>!b?'':b<=2?'b'+b:b===3?'b3':'b4';
+function dueText(c,now){if(!c?.n)return 'Not seen yet';if(c.d<=now)return 'Ready to practice now';const h=(c.d-now)/36e5;return h<24?`Comes back in ${Math.max(1,Math.round(h))} h`:`Comes back in ${Math.round(h/24)} days`;}
+function statsView(p){
+  const now=Date.now(),tabs=['add','sub','mul','div','v1','v2','v3',...(db.words.length?['mine']:[])],op=tabs.includes(ui.tab)?ui.tab:'add',words=M[op].subject==='words';
+  const dk=Core.items(op,{...opts(p),range:'all'}),right=p.rounds.reduce((s,r)=>s+r.right,0),tries=p.rounds.reduce((s,r)=>s+r.right+r.wrong,0);
+  const cell=(f,text)=>f?`<td><button class="${boxClass(p.cards[f.key]?.b)}" data-act="cell" data-v="${f.key}" aria-pressed="${ui.cell===f.key}" aria-label="${f.a} ${Core.OPS[op].sym} ${f.b}">${text??''}</button></td>`:'<td></td>';
+  const byKey=Object.fromEntries(dk.map(f=>[f.key,f]));let grid='';
+  if(words)grid=`<div class="chips">${dk.map(f=>`<button class="${boxClass(p.cards[f.key]?.b)}" data-act="cell" data-v="${esc(f.key)}" aria-pressed="${ui.cell===f.key}">${esc(f.w)}</button>`).join('')}</div>`;
+  else if(op==='mul'||op==='div'){grid=`<table class="heat wide"><tr><th>${Core.OPS[op].sym}</th>${[1,2,3,4,5,6,7,8,9,10].map(n=>`<th>${n}</th>`).join('')}</tr>`;
+    for(let a=1;a<=10;a++){grid+=`<tr><th>${a}</th>`;for(let b=1;b<=10;b++)grid+=cell(op==='mul'?byKey[`mul:${Math.min(a,b)}x${Math.max(a,b)}`]:byKey[`div:${a*b}/${a}`],a*b);grid+='</tr>';}grid+='</table>';}
+  else{const max=p.set.stretch?20:19;grid=`<table class="heat"><tr><th>${Core.OPS[op].sym}</th>${Array.from({length:max},(_,i)=>`<th>${i+1}</th>`).join('')}</tr>`;
+    for(let a=1;a<=max;a++){grid+=`<tr><th>${a}</th>`;for(let b=1;b<=max;b++)grid+=cell(op==='add'?byKey[`add:${Math.min(a,b)}+${Math.max(a,b)}`]:byKey[`sub:${a+b}-${a}`]);grid+='</tr>';}grid+='</table>';}
+  const sel=byKey[ui.cell],sc=sel&&p.cards[sel.key],trick=sel&&Core.mnemonic(sel).reveal;
+  const detail=sel?`<p><b>${label(sel)}</b>${words?`: ${esc(sel.def)}`:''} · ${dueText(sc,now)}${sc?.n?` · right ${sc.c} of ${sc.n}${sc.ms?` · about ${(sc.ms/1000).toFixed(1)} s`:''}`:''}${trick?`<br><span class="small soft">${esc(trick)}</span>`:''}</p>`
+    :`<p class="small soft">Tap a ${words?'word':'square'} to see ${words?'its meaning':'the fact'} and its trick.${op==='sub'?' Rows are the number taken away; columns are the answer.':op==='div'?' Each square shows the number being divided by its row.':''}</p>`;
+  const secs=secsOf(p),range=rangeOf(p,op),rs=p.rounds.filter(r=>r.mode===op&&r.secs===secs&&r.range===range).slice(-20);
+  return `<header class="row"><button class="btn ghost" data-act="go" data-v="home">← Back</button><h2 class="grow">${esc(p.name)}'s progress</h2></header>
+    <div class="sheet tiles"><div><b>${p.rounds.length}</b><span class="small soft">dashes played</span></div><div><b>${right}</b><span class="small soft">right answers</span></div><div><b>${tries?Math.round(right/tries*100)+'%':'–'}</b><span class="small soft">right first try</span></div><div><b>${Core.dayStreak(p.days,now)}</b><span class="small soft">days in a row</span></div></div>
+    <div class="tabs" role="group" aria-label="Deck">${tabs.map(m=>`<button data-act="tab" data-v="${m}" aria-pressed="${op===m}">${M[m].subject==='words'&&m!=='mine'?'Words '+M[m].sym:M[m].sym+' '+M[m].name}</button>`).join('')}</div>
+    <div class="sheet col"><h3>${M[op].name}${range==='low'?' up to 10':range==='high'?' above 10':''}: ${secs?`${secs}-second speed rounds`:'practice rounds'}</h3>${spark(rs)}</div>
+    <div class="sheet col map"><h3>${words?'Word map':'Fact map'}</h3><div class="legend"><span><i style="background:var(--paper)"></i>New</span><span><i style="background:var(--h1)"></i>Just met</span><span><i style="background:var(--h2)"></i>Learning</span><span><i style="background:var(--h3)"></i>Almost</span><span><i style="background:var(--h4)"></i>Strong</span></div><div class="gridwrap">${grid}</div>${detail}</div>`;
+}
+function spark(rs){
+  if(rs.length<2)return '<p class="small soft">Play two of these rounds to see your line. Switch between Practice and Speed round on the home screen.</p>';
+  const W=320,H=90,L=26,R=30,T=12,B=10,max=Math.max(5,...rs.map(r=>r.score)),x=i=>L+i*(W-L-R)/(rs.length-1),y=v=>T+(H-T-B)*(1-v/max),last=rs.at(-1);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Scores from ${rs[0].score} to ${last.score}, best ${Math.max(...rs.map(r=>r.score))}" style="width:100%;height:auto">
+    <line x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-width="1"/><line x1="${L}" x2="${W-R}" y1="${y(max)}" y2="${y(max)}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4"/>
+    <text x="${L-6}" y="${y(max)+4}" text-anchor="end">${max}</text><text x="${L-6}" y="${y(0)+4}" text-anchor="end">0</text>
+    <polyline fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round" points="${rs.map((r,i)=>`${x(i)},${y(r.score)}`).join(' ')}"/>
+    ${rs.map((r,i)=>`<circle cx="${x(i)}" cy="${y(r.score)}" r="${i===rs.length-1?5:3.5}" fill="var(--blue)" stroke="var(--card)" stroke-width="2"><title>${new Date(r.t).toLocaleDateString()}: ${r.score} right</title></circle>`).join('')}
+    <text x="${x(rs.length-1)+9}" y="${y(last.score)+4}" style="fill:var(--ink);font-size:13px">${last.score}</text></svg>`;
+}
+function settingsView(p){
+  const seg=(k,list)=>`<div class="tabs" role="group">${list.map(([v,l])=>`<button data-act="set" data-k="${k}" data-v="${v}" aria-pressed="${String(p.set[k])===String(v)}">${l}</button>`).join('')}</div>`;
+  const ask=(id,text,yes)=>ui.confirm===id?`<div class="row"><span class="grow"><b>${text}</b> This cannot be undone.</span><button class="btn warn" data-act="${id}">${yes}</button><button class="btn ghost" data-act="confirm" data-v="">Keep</button></div>`:'';
+  const phone=standalone()?'<p class="small soft">Installed on this device. It works without an internet connection.</p>'
+    :self!==top?'<p class="small soft">This preview runs inside Claude. To install it as an app, open the hosted copy of Fact Dash in Safari on the iPhone.</p>'
+    :'<ol class="steps small"><li>Open this page in Safari on the iPhone.</li><li>Tap the Share button.</li><li>Tap Add to Home Screen.</li></ol><p class="small soft">It then opens full screen from its own icon and works without an internet connection.</p>';
+  return `<header class="row"><button class="btn ghost" data-act="go" data-v="home">← Back</button><h2 class="grow">Grown-ups</h2></header>
+    <div class="sheet col"><h3>Settings for ${esc(p.name)}</h3>
+      <div class="col"><span class="small soft">Who answers</span>${seg('answer',[['coach','He says it, I mark yes or no'],['type','He answers alone']])}<span class="small soft">${p.set.answer==='coach'?'You see the answer and tap Yes or No.':'He types numbers and picks word meanings from three choices.'}</span></div>
+      ${p.set.answer==='coach'?`<div class="col"><span class="small soft">Show me the answer on screen</span>${seg('peek',[[true,'Show'],[false,'Hide']])}</div>`:''}
+      <div class="col"><span class="small soft">Speed round length</span>${seg('secs',[[30,'30 s'],[60,'1 min'],[90,'90 s'],[120,'2 min']])}<span class="small soft">Choose Practice or Speed round on the home screen. Practice is ${CHILL} cards with no clock.</span></div>
+      <div class="col"><span class="small soft">New cards arrive</span>${seg('order',[['random','In random order'],['easy','Easiest first']])}</div>
+      <div class="col"><span class="small soft">Tricks and pictures on the card</span>${seg('hints',[['always','Always'],['fade','Fade once a card is solid'],['off','Only after a miss']])}</div>
+      <div class="col"><span class="small soft">Adding and subtracting</span>${seg('stretch',[[false,'Sums up to 20'],[true,'Both numbers up to 20']])}</div>
+      <div class="col"><span class="small soft">Sound</span>${seg('sound',[[true,'On'],[false,'Off']])}</div></div>
+    <div class="sheet col"><h3>My words</h3><p class="small soft">${db.words.length?`${db.words.length} of your own words, shared by every player.`:'Add this week\'s school words and they join the Words decks.'}</p><div><button class="btn ghost" data-act="go" data-v="words">${db.words.length?'Edit my words':'Add words'}</button></div></div>
+    <div class="sheet col"><h3>On the iPhone</h3>${phone}</div>
+    <div class="sheet col"><h3>How it works</h3><p class="small">Each card sits in one of six boxes. A quick right answer moves it up a box, and it comes back after 8 hours, then 2, 5, 12 and 30 days. A miss sends it back to box one and it returns within the same dash. New cards arrive in random order (or easiest first, if you choose that above), and only while fewer than five are still shaky. The clock stops while a missed card is being corrected. When you mark spoken answers, a quick answer gets an extra second and a half to allow for saying it aloud.</p><p class="small">Math cards carry a number strategy and a dot picture. Word cards carry a sound-alike picture or the word's real parts, plus a sentence.</p><p class="small soft">A speed round counts how many he gets right before the clock runs out. Practice gives the same cards with no clock. Each keeps its own best score. Three rounds a day is the target. Short and daily beats long and rare.</p></div>
+    <div class="sheet col"><h3>Saved data</h3><p class="small">${statusText()}</p><p class="small soft">A CSV file holds every player, every round played and every card's progress. Save one to keep your own copy or open it in a spreadsheet. Load one to bring the data back on any device.</p>
+      <div class="row"><button class="btn ghost" data-act="csvSave">Save CSV file</button><button class="btn ghost" data-act="csvPick">Load CSV file</button><input type="file" id="csvFile" accept=".csv,text/csv" aria-label="CSV file to load" hidden></div>
+      ${ui.pending?`<div class="row"><span class="grow"><b>Load this file?</b> ${esc(describe(ui.pending))} Players here with the same identity are replaced by the file's copy.</span><button class="btn" data-act="csvLoad">Load</button><button class="btn ghost" data-act="csvCancel">Cancel</button></div>`:''}
+      <p class="small" id="csvMsg" aria-live="polite">${esc(ui.msg)}</p></div>
+    <div class="sheet col"><h3>Start over</h3><div class="row"><button class="btn ghost" data-act="confirm" data-v="reset">Erase ${esc(p.name)}'s progress</button><button class="btn ghost" data-act="confirm" data-v="remove">Remove ${esc(p.name)}</button></div>
+      ${ask('reset','Erase all progress?','Erase')}${ask('remove','Remove this player?','Remove')}</div>`;
+}
+function wordsView(){
+  return `<header class="row"><button class="btn ghost" data-act="go" data-v="settings">← Back</button><h2 class="grow">My words</h2></header>
+    <form class="sheet col" id="wordForm"><h3>Add a word</h3>
+      <label class="col" for="cw"><span class="small soft">Word</span><input type="text" id="cw" maxlength="30" autocomplete="off" autocapitalize="none" placeholder="migrate"></label>
+      <label class="col" for="cdef"><span class="small soft">Meaning, in words he would use</span><input type="text" id="cdef" maxlength="80" autocomplete="off" placeholder="to move to a new place"></label>
+      <label class="col" for="chook"><span class="small soft">Memory trick (optional)</span><input type="text" id="chook" maxlength="140" autocomplete="off" placeholder="Sounds like my grate. My grate rolls away to a new house."></label>
+      <p class="small" id="wordMsg" aria-live="polite"></p><div><button class="btn" type="submit">Add word</button></div></form>
+    <div class="sheet col"><h3>${db.words.length?`${db.words.length} words`:'No words yet'}</h3>
+      ${db.words.length?`<div class="mylist">${db.words.map(w=>`<div><span class="grow"><b>${esc(w.w)}</b>: ${esc(w.def)}${w.hook?`<br><span class="small soft">${esc(w.hook)}</span>`:''}</span><button class="btn ghost mini" data-act="unword" data-v="${w.id}" aria-label="Remove ${esc(w.w)}">Remove</button></div>`).join('')}</div>`
+      :'<p class="small soft">Words you add show up as the My words deck under Words, and in All my words once he has played them.</p>'}</div>`;
+}
+
+/* ---------- the dash ---------- */
+function start(mode){
+  const p=me(),secs=secsOf(p);G={mode,secs,order:p.set.order,bk:bestKey(p,mode),range:rangeOf(p,mode),left:secs*1000,right:0,wrong:0,streak:0,bestStreak:0,stars:0,n:0,up:0,recent:[],newHard:0,log:[],count:3,deck:Core.deck(mode,opts(p),p.cards)};
+  if(!G.deck.length){G=null;view='words';return render();}
+  view='play';render();beep([[440,.12]]);
+  try{navigator.wakeLock?.request('screen').then(w=>wake=w,()=>{});}catch{}
+  const tick=()=>{if(view!=='play'||!G)return;G.count--;if(G.count){beep([[440,.12]]);render();setTimeout(tick,700);}else{beep([[880,.2]]);next();runClock();}};
+  setTimeout(tick,700);
+}
+function next(){
+  const p=me();if(!G.secs&&G.n>=CHILL)return finish();
+  G.recent=G.recent.slice(-Math.min(3,G.deck.length-1));
+  const pick=Core.pickNext(p.cards,G.deck,G,Date.now()),f=pick.fact,flip=(f.op==='add'||f.op==='mul')&&Math.random()<.5;
+  G.recent=[...G.recent,f.key].slice(-3);G.skipped=false;
+  G.cur={fact:f,due:pick.due,isNew:pick.isNew,x:flip?f.b:f.a,y:flip?f.a:f.b,typed:'',phase:'ask',t0:performance.now(),mn:Core.mnemonic(f),wasBox:p.cards[f.key]?.b||0,hintOpen:false,
+    choices:f.kind==='vocab'&&p.set.answer!=='coach'?Core.choices(f,[...G.deck,...Core.items('v1'),...Core.items('v2')]):null};
+  render();
+}
+function runClock(){
+  clearInterval(timer);let prev=performance.now();
+  timer=setInterval(()=>{const now=performance.now(),dt=now-prev;prev=now;if(view!=='play'||!G){clearInterval(timer);return;}
+    if(!G.secs||G.cur?.phase!=='ask'||document.hidden)return;
+    G.left-=dt;const el=document.getElementById('clockFill');if(el){el.style.width=Math.max(0,G.left/(G.secs*1000)*100)+'%';el.parentNode.classList.toggle('low',G.left<10000);}
+    if(G.left<=0)finish();},100);
+}
+function answer(ok){
+  const p=me(),c=G.cur,f=c.fact,ms=performance.now()-c.t0,before=p.cards[f.key]?.b||0,slack=p.set.answer==='coach'?SPOKEN:0;
+  p.cards[f.key]=Core.grade(p.cards[f.key],f,ok,ms,Date.now(),c.due,slack);
+  if(c.isNew&&(!ok||ms>Core.fastMs(f)+slack))G.newHard++;
+  if(p.cards[f.key].b>before&&!c.isNew||c.isNew&&ok)G.up++;
+  G.log.push({fact:f,ok,ms});G.n++;
+  if(ok){G.right++;G.streak++;G.bestStreak=Math.max(G.bestStreak,G.streak);G.stars+=1+(G.streak%5===0?1:0);c.phase='good';beep([[660,.08],[880,.12]]);render();setTimeout(()=>{if(view==='play'&&G&&G.cur===c)next();},p.set.hints==='off'?350:f.kind==='vocab'?900:650);}
+  else{G.wrong++;G.streak=0;c.phase='fix';c.typed='';beep([[220,.2]]);render();}
+  p.updated=Date.now();store();   // the account store gets the round when it ends, not every answer
+}
+function key(v){
+  if(view!=='play'||!G||G.count||me().set.answer==='coach'||G.cur.fact.kind==='vocab')return;const c=G.cur,want=String(c.fact.ans);c.shake=false;
+  if(c.phase==='good')return;
+  if(v==='back'){c.typed=c.typed.slice(0,-1);return render();}
+  if(v==='skip'){if(c.phase==='ask'){G.skipped=true;answer(false);}return;}
+  if(c.typed.length>=want.length)return;
+  c.typed+=v;
+  if(c.phase==='fix'){if(c.typed===want)return next();if(c.typed.length>=want.length){c.typed='';c.shake=true;}return render();}
+  if(c.typed.length>=want.length)return answer(c.typed===want);
+  render();
+}
+// A tap only counts once the card has been up for a moment, so a double tap cannot answer the next card too.
+const ready=()=>view==='play'&&G&&!G.count&&G.cur.phase==='ask'&&performance.now()-G.cur.t0>350;
+function finish(){
+  clearInterval(timer);try{wake?.release();}catch{}wake=null;
+  const p=me(),now=Date.now(),bk=G.bk,prev=p.best[bk]??null,dk=Core.dayKey(now);
+  if(!G.n){view='home';G=null;return render();}
+  const record=prev==null||G.right>prev;if(record)p.best[bk]=G.right;
+  p.days[dk]=(p.days[dk]||0)+1;const goalHit=p.days[dk]===GOAL;
+  const stars=G.stars+(record&&prev!=null?5:0)+(goalHit?3:0);p.stars+=stars;
+  p.rounds.push({t:now,mode:G.mode,secs:G.secs,score:G.right,right:G.right,wrong:G.wrong,range:G.range});if(p.rounds.length>400)p.rounds=p.rounds.slice(-400);
+  G.result={score:G.right,prev,record,stars,goalHit,up:G.up};ui.msg='';save(p);view='done';render();
+  if(record&&prev!=null||goalHit){beep([[523,.12],[659,.12],[784,.12],[1047,.25]]);confetti();}else beep([[523,.12],[659,.2]]);
+}
+function confetti(){if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;const cols=['var(--blue)','var(--amber)','var(--good)','var(--star)'];for(let i=0;i<36;i++){const d=document.createElement('i');d.className='conf';d.style.left=Math.random()*100+'vw';d.style.background=cols[i%4];d.style.animationDelay=Math.random()*.6+'s';document.body.appendChild(d);setTimeout(()=>d.remove(),2600);}}
+
+/* ---------- events ---------- */
+const acts={
+  av:v=>{ui.av=v;const n=document.getElementById('pname')?.value||'';render();const el=document.getElementById('pname');if(el)el.value=n;},
+  add:()=>{ui.adding=true;render();document.getElementById('pname')?.focus();},cancelAdd:()=>{ui.adding=false;render();},
+  pick:v=>{db.cur=v;store();view='home';render();},who:()=>{view='who';ui.adding=false;render();},
+  go:v=>{view=v;ui.confirm=null;ui.cell=null;ui.msg='';ui.pending=null;render();scrollTo(0,0);},start:v=>start(v),
+  subject:v=>{const p=me();p.subject=v;save(p);render();},round:v=>{const p=me();p.set.round=v==='practice'?'practice':'speed';save(p);render();},range:v=>{const p=me();p.set.range=Core.SETTINGS.range.includes(v)?v:'all';save(p);render();},tipOff:()=>{db.tipOff=true;store();render();},
+  quit:()=>{if(G.n)finish();else{clearInterval(timer);G=null;view='home';render();}},
+  key:v=>key(v),
+  mark:v=>{if(ready())answer(v==='yes');},
+  choose:v=>{if(ready()&&G.cur.choices)answer(G.cur.choices[v]===G.cur.fact.def);},
+  nextCard:()=>{if(view==='play'&&G&&!G.count&&G.cur.phase==='fix')next();},
+  hint:()=>{G.cur.hintOpen=true;render();},say:()=>speak(G.cur.fact.w),
+  tab:v=>{ui.tab=v;ui.cell=null;render();},cell:v=>{ui.cell=ui.cell===v?null:v;render();},
+  set:(v,el)=>{const p=me(),k=el.dataset.k;p.set[k]=k==='secs'?Number(v):k==='stretch'||k==='sound'||k==='peek'?v==='true':v;save(p);render();},
+  confirm:v=>{ui.confirm=v||null;render();},
+  reset:()=>{const p=me();Object.assign(p,{cards:{},rounds:[],best:{},stars:0,days:{}});save(p);ui.confirm=null;view='home';render();},
+  remove:()=>{const id=db.cur;db.gone[id]=Date.now();db.players=db.players.filter(p=>p.id!==id);db.cur=null;push(id);saveMeta();ui.confirm=null;view='who';render();},
+  unword:v=>{db.words=db.words.filter(w=>w.id!==v);db.players.forEach(p=>{if(p.cards['my:'+v]){delete p.cards['my:'+v];save(p);}});saveMeta();render();},
+  csvSave:()=>saveCSV(),csvPick:()=>document.getElementById('csvFile')?.click(),csvCancel:()=>{ui.pending=null;ui.msg='';render();},
+  csvLoad:()=>{const d=ui.pending;if(!d)return;
+    for(const p of d.players){delete db.gone[p.id];const i=db.players.findIndex(x=>x.id===p.id);if(i<0)db.players.push(p);else db.players[i]=p;save(p);}
+    if(d.words.length){const ids=new Set(d.words.map(w=>w.id));db.words=Core.cleanWords([...d.words,...db.words.filter(w=>!ids.has(w.id))]);}
+    saveMeta();ui.pending=null;ui.msg=`Loaded ${describe(d).replace(/^This file has /,'')}`;render();}
+};
+app.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b&&acts[b.dataset.act])acts[b.dataset.act](b.dataset.v,b);});
+app.addEventListener('submit',e=>{e.preventDefault();
+  if(e.target.id==='wordForm'){const val=id=>document.getElementById(id).value.trim(),w=val('cw'),def=val('cdef'),msg=document.getElementById('wordMsg');
+    if(!w||!def){msg.textContent='Type the word and what it means.';document.getElementById(w?'cdef':'cw').focus();return;}
+    if(db.words.some(x=>x.w.toLowerCase()===w.toLowerCase())){msg.textContent=`${w} is already in your list.`;return;}
+    if(db.words.length>=300){msg.textContent='That is the limit of 300 words. Remove one to add another.';return;}
+    db.words.push({id:uid(),w,def,hook:val('chook')});saveMeta();render();document.getElementById('cw').focus();return;}
+  const el=document.getElementById('pname'),name=el.value.trim();if(!name){el.focus();return;}const p=newPlayer(name,ui.av);db.players.push(p);db.cur=p.id;ui.adding=false;save(p);view='home';render();});
+app.addEventListener('change',e=>{if(e.target.id!=='csvFile'||!e.target.files[0])return;const r=new FileReader();
+  r.onload=()=>{try{ui.pending=Core.fromCSV(r.result);ui.msg='';}catch{ui.pending=null;ui.msg='That file is not a Fact Dash CSV. Choose a file saved from Save CSV file.';}render();};
+  r.onerror=()=>{ui.msg='That file could not be read. Try choosing it again.';render();};r.readAsText(e.target.files[0]);});
+document.addEventListener('keydown',e=>{if(view!=='play'||!G||e.metaKey||e.ctrlKey||e.altKey)return;const k=e.key.toLowerCase();
+  if(k==='escape')return acts.quit();
+  if(k===' '||k==='enter'){e.preventDefault();return acts.nextCard();}
+  if(me().set.answer==='coach'){if(k==='y'||k==='arrowright')acts.mark('yes');else if(k==='n'||k==='arrowleft')acts.mark('no');return;}
+  if(G.cur?.choices){if(/^[1-3]$/.test(k))acts.choose(k-1);return;}
+  if(/^[0-9]$/.test(k))key(k);else if(k==='backspace'){e.preventDefault();key('back');}});
+render();   // always opens on the player picker
+connect();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)flush();});
+// Installed-app plumbing: offline cache and a request to keep saved progress from being cleared.
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)&&self===top)navigator.serviceWorker.register('sw.js').catch(()=>{});
+try{navigator.storage?.persist?.().catch(()=>{});}catch{}
+})();
+</script>
+<!--/body-->
+</body>
+</html>
