@@ -1,18 +1,41 @@
 # camden.games
 
-A small site of kids' games at https://camden.games. Each game is a folder of plain files under `site/`, and the home page (`site/index.html`) has one tile for each. One Cloudflare Worker serves the site and gives it a single sign-in: the same name and password works in every game, and each game keeps its own saved data under that account.
+A small site of kids' learning games at https://camden.games. Each game is a folder of plain files under `site/`, with no build step and no packages. One Cloudflare Worker serves the site and stores saved data.
 
-There is one game so far, Fact Dash.
+There are two games:
+
+- **Fact Dash** (`site/fact-dash/`): flash-card rounds for math facts and vocabulary, played with a grown-up.
+- **Brain Bricks** (`site/brain-bricks/`): a brick breaker. After each level the player answers three questions, and each right answer earns a power-up for the next level.
+
+## How the pieces fit
+
+- **Account:** the name and password a grown-up signs in with, once per device, on the home page.
+- **Profile:** one person in that account ("Who is playing?"). The home page asks, and every game opened from it knows the answer.
+- **Cards:** each profile has one record of what that person knows, and every game reads and updates it. A fact answered in Brain Bricks moves on in Fact Dash too.
+- **Game data:** scores and settings belong to each game and are stored inside the profile.
+
+Everything the games share lives in `site/shared/`:
+
+| File | What it is |
+| --- | --- |
+| `srs.js` | The scheduler: which card comes next and what an answer does to a card (see below) |
+| `core.js`, `words.js` | The question bank (math facts, vocabulary, memory tricks) and the checks every saved profile passes through |
+| `profiles.js` | Who is playing: the profiles, saving them in the browser, signing in, and keeping a copy online |
+| `site.css` | The look shared by the home page and Brain Bricks |
 
 ## Adding a game
 
-1. Put the game in its own folder under `site/`, for example `site/word-hunt/`.
-2. Add a tile for it to `site/index.html`.
-3. If it saves data online, add its folder name to `GAMES` in `worker/index.js`. It then reads and writes at `/api/data/<folder name>`, and signs in through `/api/signup`, `/api/login` and `/api/logout` like Fact Dash does.
+1. Put the game in its own folder under `site/`, for example `site/word-hunt/`, and load `../shared/site.css` and the four shared scripts (`srs.js`, `words.js`, `core.js`, `profiles.js`) as `site/brain-bricks/index.html` does.
+2. Add a line for it to `GAMES` at the top of the script in `site/index.html`, and its folder name to the path check in `serve.mjs`.
+3. Get the player with `Profiles.me()`. If nobody has been picked, send the browser to `../`.
+4. Ask questions with `Core.deck` and `SRS.pick`, record answers with `SRS.review`, and never read a card's fields.
+5. Keep the game's own data in `profile.games['<folder name>']`, a small plain object, and call `Profiles.save(profile)` after changing anything.
+
+Keep the game's logic in a file with no page access and test it, as `site/brain-bricks/game.js` and `test/bricks.test.mjs` do.
 
 ## The scheduler
 
-`site/shared/srs.js` is the spaced-repetition algorithm for the whole site: it decides which card to ask next and what an answer does to a card. Every game loads it with `<script src="../shared/srs.js"></script>` and uses the global `SRS`. It is the only file that knows how a saved card is laid out, so the algorithm can be replaced by rewriting that one file.
+`site/shared/srs.js` is the spaced-repetition algorithm for the whole site: it decides which card to ask next and what an answer does to a card. Every game loads it and uses the global `SRS`. It is the only file that knows how a saved card is laid out, so the algorithm can be replaced by rewriting that one file.
 
 | Function | What it does |
 | --- | --- |
@@ -28,8 +51,6 @@ There is one game so far, Fact Dash.
 
 Quick flash-card rounds for math facts and vocabulary, built for an 8-year-old and the grown-up sitting next to him. He says the answer, the grown-up taps Yes or No, and the app decides which card comes next.
 
-It is plain files with no build step. The site's Worker keeps each family's players online under a name and password.
-
 ### What it does
 
 - **Math:** adding and subtracting within 20 (switchable between numbers up to 10, 11 to 20, or all) and multiplying and dividing to 10. Every card shows a number strategy and a dot picture.
@@ -37,7 +58,7 @@ It is plain files with no build step. The site's Worker keeps each family's play
 - **Two round types:** Practice (15 cards, no clock) or a timed Speed round (60 seconds by default).
 - **Spaced repetition:** each card sits in one of six boxes. A quick right answer moves it up, and it comes back after 8 hours, then 2, 5, 12 and 30 days. A miss sends it back to box one and it returns within the same round.
 - **Players and progress:** any number of players, picked on startup, each with best scores, a score chart and a map of every card.
-- **Saved data:** progress is kept on the device after every answer. Sign in with a name and password (first screen, or Grown-ups > Online account) and it is also kept online, so any device signed in to the same account shows the same players. Saved data saves everything as one CSV file.
+- **Saved data:** progress is kept on the device after every answer. Sign in with a name and password (the site's home page, Fact Dash's first screen, or Grown-ups > Online account) and it is also kept online, so any device signed in to the same account shows the same players. Saved data saves everything as one CSV file.
 
 ## Run it
 
@@ -80,19 +101,20 @@ For the App Store later, the same folder can be wrapped with Capacitor on a Mac 
 | `site/index.html` | The site's home page, with a tile for each game |
 | `site/sw.js` | Clears the offline copy left on devices from when Fact Dash was the whole site |
 | `site/fact-dash/index.html` | Fact Dash's interface and styles |
-| `site/shared/srs.js` | The scheduler (spaced repetition), shared by every game |
-| `site/fact-dash/core.js` | Fact Dash's logic with no page access: decks, memory tricks, saved-data checks, CSV |
-| `site/fact-dash/words.js` | Built-in vocabulary |
+| `site/shared/` | What every game shares: scheduler, question bank, profiles, styles (see "How the pieces fit") |
+| `site/brain-bricks/game.js` | Brain Bricks' logic with no page access: levels, ball and paddle, power-ups |
+| `site/brain-bricks/index.html` | Brain Bricks' screens: the field, the questions between levels, the rewards |
 | `site/fact-dash/sw.js`, `site/fact-dash/manifest.webmanifest`, `site/fact-dash/icons/` | Installable-app shell and offline cache |
-| `worker/index.js`, `wrangler.jsonc` | Cloudflare Worker: serves `site/`, checks sign-ins and stores each account's data for every game in a Durable Object |
+| `worker/index.js`, `wrangler.jsonc` | Cloudflare Worker: serves `site/`, checks sign-ins and stores each account's profiles in a Durable Object |
 | `serve.mjs` | Local static server for `npm start`, without accounts |
 | `build-artifact.mjs` | Builds the single-file Claude artifact copy of Fact Dash |
 | `test/app.test.mjs` | Tests for the logic, the word list, the CSV format and the app shell |
 | `test/srs.test.mjs` | Tests for the scheduler: the contract games rely on, and the current algorithm |
+| `test/bricks.test.mjs` | Tests for Brain Bricks' logic |
 | `test/api.test.mjs` | Runs the Worker in `wrangler dev` and tests accounts and saving |
 
 ## Changing things
 
 - Bump `CACHE` in `site/fact-dash/sw.js` whenever a file in `site/fact-dash/` changes, or installed phones keep the old version.
-- Fact Dash's saved data is stored under `factdash.v1`. Keep old saves loading; everything read back passes through `Core.cleanPlayer` and `Core.cleanWords`.
+- Profiles are stored in the browser under `factdash.v1` (the name dates from when Fact Dash was the whole site) and online in the `profiles` store. Keep old saves loading; everything read back passes through `Core.cleanPlayer` and `Core.cleanWords`.
 - Word entries are `[word, part of speech, meaning, sentence, cue, picture]`. The cue is shown with the question, so it must not give the meaning away. The tests check this.

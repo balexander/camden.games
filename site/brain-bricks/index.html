@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brain Bricks</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111728" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="../shared/site.css">
+<style>
+/* One screen at a time: the start card, the brick field, a question, or the power-ups earned. The field keeps its 360 by 600 shape and grows to fit. */
+body{overscroll-behavior:none}
+#app.play{height:100dvh;gap:8px;padding-block:8px;max-width:none;align-items:center;touch-action:none;-webkit-user-select:none;user-select:none}
+#app.play .hud{width:100%;max-width:520px}
+canvas{display:block;border-radius:14px;border:2px solid var(--line);background:var(--card)}
+.hud .stat{font-size:1.1rem}
+.big{font:800 3.2rem/1 var(--display);font-variant-numeric:tabular-nums}
+.center{align-items:center;text-align:center}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{font-weight:700;padding:8px 14px;border-radius:999px;border:2px solid var(--line);background:var(--card);min-height:44px}
+.seg button[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:var(--blue-ink)}
+.dots{display:flex;gap:6px;justify-content:center}
+.dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--line)}
+.dots i.ok{background:var(--good);border-color:var(--good)} .dots i.no{background:var(--miss);border-color:var(--miss)} .dots i.now{border-color:var(--blue)}
+.q{font:800 clamp(2.4rem,11vw,3.4rem)/1.1 var(--display);font-variant-numeric:tabular-nums}
+.q .slot{display:inline-block;min-width:1.4em;border-bottom:4px solid var(--blue);color:var(--blue)}
+.q.word{font-size:clamp(1.9rem,9vw,2.6rem)}
+.fix{background:var(--miss-wash);border-color:var(--miss)} .good{background:var(--good-wash);border-color:var(--good)}
+.shake{animation:shake .3s} @keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad button{font:800 1.7rem var(--display);height:clamp(46px,8.5vh,64px);border-radius:14px;background:var(--card);border:2px solid var(--line);box-shadow:0 3px 0 var(--line)}
+.pad button:active{transform:translateY(3px);box-shadow:none;background:var(--blue-wash)}
+.pad .alt{font-size:1rem;color:var(--soft)}
+.choices{display:grid;gap:8px}
+.choices button{font-weight:700;font-size:1.05rem;text-align:left;padding:12px 14px;min-height:56px;border-radius:14px;background:var(--card);border:2px solid var(--line);box-shadow:0 3px 0 var(--line)}
+.choices button:active{transform:translateY(3px);box-shadow:none;background:var(--blue-wash)}
+.choices button.right{border-color:var(--good);background:var(--good-wash)}
+.power{display:flex;gap:12px;align-items:center;padding:10px 12px;border-radius:14px;border:2px solid var(--line)}
+.power.on{border-color:var(--good);background:var(--good-wash)} .power:not(.on){opacity:.55}
+.power .ico{font-size:1.6rem;width:1.6em;text-align:center}
+@media (prefers-reduced-motion:reduce){.shake{animation:none}}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script src="../shared/srs.js"></script>
+<script src="../shared/words.js"></script>
+<script src="../shared/core.js"></script>
+<script src="../shared/profiles.js"></script>
+<script src="game.js"></script>
+<script>
+// Brain Bricks, the page. Bricks (game.js) runs the ball and bricks; this file draws them, runs the questions between levels,
+// and saves. Who is playing and what they know come from Profiles and the scheduler, shared with every other game.
+(()=>{
+const GAME='brain-bricks',B=Bricks,app=document.getElementById('app'),esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(!Profiles.me()){location.replace('../');return;}   // nobody picked yet: the home page asks who is playing
+const p=()=>Profiles.me(),mine=()=>{const me=p();me.games[GAME]=B.clean(me.games[GAME]);return me.games[GAME];};
+let view='start',S=null,Q=null,earned=B.powers(0),raf=0,prev=0,sparks=[],shakeT=0,ctx=null,scale=1,keys={},actx=null;
+Profiles.busyWith(()=>view==='start'?null:Profiles.db.cur);
+Profiles.on(()=>{if(!p())location.replace('../');else if(view==='start')render();});
+
+function beep(notes){if(!p()?.set.sound)return;try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();let t=actx.currentTime;for(const [f,d] of notes){const o=actx.createOscillator(),g=actx.createGain();o.type='triangle';o.frequency.value=f;g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d);t+=d*.8;}}catch{}}
+
+/* ---------- screens ---------- */
+function render(){
+  app.className=view;
+  app.innerHTML={start:startView,play:playView,quiz:quizView,reward:rewardView}[view]();
+  if(view==='play')setupField();
+}
+function startView(){
+  const me=p(),g=mine();
+  return `<header class="row"><a class="btn ghost" href="../">← Games</a><h2 class="grow">Brain Bricks</h2></header>
+    <div class="sheet col center"><span class="av">${esc(me.av||'🦊')}</span><h2>${esc(me.name)}</h2>
+      <p class="soft">Level</p><div class="big">${g.level}</div>
+      <button class="btn" data-act="play">${g.level>1?'Keep going':'Play'}</button>
+      ${g.level>1?'<button class="btn ghost" data-act="restart">Start again from level 1</button>':''}
+      <p class="small soft">Best score ${g.best} · furthest level ${g.top}</p></div>
+    <div class="sheet col"><h3>Questions between levels</h3><div class="seg" role="group" aria-label="Kind of questions">
+      <button data-act="subject" data-v="math" aria-pressed="${g.subject==='math'}">Math</button><button data-act="subject" data-v="words" aria-pressed="${g.subject==='words'}">Words</button></div>
+      <p class="small soft">Slide your finger to move the paddle. After each level, answer ${B.QUIZ} questions. Every right answer earns a power-up for the next level.</p></div>`;
+}
+function playView(){
+  return `<div class="hud row"><button class="btn ghost" data-act="quit" aria-label="Stop playing">✕</button><span class="stat grow">Level ${S.level}</span><span class="stat" id="score">${S.score}</span><span class="stat" id="lives" aria-label="Lives">${'❤️'.repeat(S.lives)}</span></div>
+    <canvas id="field" aria-label="Brick field. Slide to move the paddle, tap to launch the ball."></canvas>
+    <p class="small soft">Slide anywhere to move</p>`;
+}
+const POWER_ICONS={wide:'↔️',extraBall:'⚪',shield:'🛡️'},POWER_TEXT={wide:'A wider paddle for the whole level',extraBall:'Two balls to start',shield:'Saves the ball once if you miss'};
+function rewardView(){
+  const next=mine().level,n=B.POWER_NAMES.filter(([k])=>earned[k]).length;
+  return `<header class="col center"><h2>${n===3?'All three power-ups!':n?`${n} power-up${n>1?'s':''} earned`:'No power-ups this time'}</h2><p class="soft">${Q.right} of ${B.QUIZ} right</p></header>
+    <div class="sheet col">${B.POWER_NAMES.map(([k,name],i)=>`<div class="power ${earned[k]?'on':''}"><span class="ico">${POWER_ICONS[k]}</span><span class="grow"><b>${name}</b><br><span class="small soft">${earned[k]?POWER_TEXT[k]:`Get ${i+1} right to earn this`}</span></span></div>`).join('')}</div>
+    <div class="row" style="justify-content:center"><button class="btn" data-act="go">${Q.won?`Start level ${next}`:`Try level ${next} again`}</button><button class="btn ghost" data-act="home">Stop for now</button></div>`;
+}
+
+/* ---------- the brick field ---------- */
+const ROWS=['#e4572e','#f08a24','#e0b100','#3fa34d','#2a9d8f','#2f6fe4','#8e5bd6'];
+function setupField(){
+  const c=document.getElementById('field'),hud=app.querySelector('.hud'),fit=()=>{
+    const w=Math.min(app.clientWidth,520),h=innerHeight-hud.offsetHeight-64-(parseFloat(getComputedStyle(document.documentElement).paddingTop)||0)-(parseFloat(getComputedStyle(document.documentElement).paddingBottom)||0);
+    scale=Math.max(.3,Math.min(w/B.W,h/B.H));const dpr=Math.min(devicePixelRatio||1,3);
+    c.style.width=B.W*scale+'px';c.style.height=B.H*scale+'px';c.width=Math.round(B.W*scale*dpr);c.height=Math.round(B.H*scale*dpr);
+    ctx=c.getContext('2d');ctx.setTransform(scale*dpr,0,0,scale*dpr,0,0);draw();};
+  const at=e=>(e.clientX-c.getBoundingClientRect().left)/scale;
+  // The whole screen steers, so a finger resting below the field does not cover the paddle.
+  app.onpointerdown=e=>{if(view!=='play'||e.target.closest('button'))return;e.preventDefault();B.movePaddle(S,at(e));B.launch(S);};
+  app.onpointermove=e=>{if(view==='play'&&(e.pointerType==='mouse'||e.buttons||e.pressure>0))B.movePaddle(S,at(e));};
+  onresize=fit;fit();prev=0;cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);
+}
+function frame(t){
+  if(view!=='play')return;
+  const dt=prev?Math.min((t-prev)/1000,1/30):0;prev=t;
+  if(!document.hidden){
+    if(keys.ArrowLeft||keys.ArrowRight)B.movePaddle(S,S.paddle.x+(keys.ArrowRight?1:-1)*420*dt);
+    for(const e of B.step(S,dt))happen(e);
+    for(const k of sparks){k.x+=k.vx*dt;k.y+=k.vy*dt;k.vy+=600*dt;k.life-=dt;}sparks=sparks.filter(k=>k.life>0);shakeT=Math.max(0,shakeT-dt);
+    draw();
+  }
+  if(S.over)return setTimeout(()=>levelOver(S.over==='won'),700);
+  raf=requestAnimationFrame(frame);
+}
+function happen(e){
+  if(e.type==='paddle')beep([[330,.05]]);else if(e.type==='brick')beep([[520,.04]]);
+  else if(e.type==='break'){beep([[660+40*(6-e.row%7),.06]]);if(!calm)for(let i=0;i<6;i++)sparks.push({x:e.x,y:e.y,vx:(Math.random()-.5)*220,vy:-Math.random()*200,life:.45,row:e.row});}
+  else if(e.type==='shield'){beep([[440,.08],[660,.1]]);}
+  else if(e.type==='lost'||e.type==='over'){beep([[300,.12],[200,.2]]);if(!calm)shakeT=.25;}
+  else if(e.type==='won')beep([[523,.09],[659,.09],[784,.09],[1047,.2]]);
+  const sc=document.getElementById('score'),lv=document.getElementById('lives');if(sc)sc.textContent=S.score;if(lv)lv.textContent='❤️'.repeat(S.lives);
+}
+function draw(){
+  if(!ctx||!S)return;const css=getComputedStyle(document.documentElement),col=n=>css.getPropertyValue(n).trim();
+  const rr=(x,y,w,h,r)=>{ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h);};
+  ctx.save();ctx.clearRect(0,0,B.W,B.H);if(shakeT)ctx.translate((Math.random()-.5)*8,(Math.random()-.5)*8);
+  for(const k of S.bricks){if(k.hp<=0)continue;ctx.fillStyle=ROWS[k.row%ROWS.length];rr(k.x,k.y,k.w,k.h,4);ctx.fill();
+    if(k.hp>1){ctx.strokeStyle=col('--ink');ctx.lineWidth=2.5;rr(k.x+1.5,k.y+1.5,k.w-3,k.h-3,3);ctx.stroke();}}   // a two-hit brick wears a dark outline until its first hit
+  for(const k of sparks){ctx.globalAlpha=Math.max(0,k.life/.45);ctx.fillStyle=ROWS[k.row%ROWS.length];ctx.fillRect(k.x-2.5,k.y-2.5,5,5);}ctx.globalAlpha=1;
+  if(S.shield){ctx.fillStyle=col('--amber');rr(4,B.H-8,B.W-8,5,2.5);ctx.fill();}
+  ctx.fillStyle=col('--blue');rr(S.paddle.x-S.paddle.w/2,B.PADDLE_Y,S.paddle.w,B.PADDLE_H,6);ctx.fill();
+  ctx.fillStyle=col('--ink');for(const b of S.balls){ctx.beginPath();ctx.arc(b.x,b.y,B.BALL_R,0,Math.PI*2);ctx.fill();}
+  if(S.serving&&!S.over){ctx.fillStyle=col('--soft');ctx.font='700 18px Nunito, system-ui, sans-serif';ctx.textAlign='center';ctx.fillText('Tap to launch',B.W/2,B.H/2+40);}
+  ctx.restore();
+}
+function levelOver(won){
+  if(view!=='play')return;
+  const me=p(),g=mine();g.best=Math.max(g.best,S.score);if(won){g.level=S.level+1;g.top=Math.max(g.top,g.level);}
+  Profiles.save(me);startQuiz(won);
+}
+
+/* ---------- the questions between levels ---------- */
+function startQuiz(won){
+  const me=p(),g=mine(),o={stretch:me.set.stretch,custom:Profiles.db.words,range:me.set.range};
+  Q={won,n:0,right:0,total:B.QUIZ,again:false,marks:[],recent:[],newHard:0,order:me.set.order,deck:Core.deck(g.subject==='words'?'vmix':'mix',o,me.cards)};
+  view='quiz';nextQ();
+}
+function nextQ(){
+  if(Q.n>=Q.total){earned=B.powers(Q.right);view='reward';beep(Q.right?[[523,.09],[784,.14]]:[[392,.12]]);return render();}
+  const me=p(),pick=SRS.pick(me.cards,Q.deck,Q,Date.now()),f=pick.fact,flip=(f.op==='add'||f.op==='mul')&&Math.random()<.5,lvl=SRS.view(me.cards[f.key]).level;
+  Q.recent=[...Q.recent,f.key].slice(-Math.min(2,Q.deck.length-1));
+  Q.cur={fact:f,due:pick.due,isNew:pick.isNew,x:flip?f.b:f.a,y:flip?f.a:f.b,typed:'',phase:'ask',t0:performance.now(),mn:Core.mnemonic(f),shake:false,
+    hint:me.set.hints==='always'||(me.set.hints==='fade'&&lvl<3),choices:f.kind==='vocab'?Core.choices(f,[...Q.deck,...Core.items('v1'),...Core.items('v2')]):null};
+  render();
+}
+function quizView(){
+  const c=Q.cur,f=c.fact,word=f.kind==='vocab',fix=c.phase==='fix',good=c.phase==='good';
+  const dots=`<div class="dots" aria-label="Question ${Math.min(Q.n+1,Q.total)} of ${Q.total}">${Array.from({length:Q.total},(_,i)=>`<i class="${Q.marks[i]===true?'ok':Q.marks[i]===false?'no':i===Q.n?'now':''}"></i>`).join('')}</div>`;
+  const ask=word?`<div class="q word">${esc(f.w)}</div><p class="soft">${fix?`means <b>${esc(f.def)}</b>`:'What does it mean?'}</p>`
+    :`<div class="q">${c.x} ${Core.OPS[f.op].sym} ${c.y} = <span class="slot ${c.shake?'shake':''}">${fix&&!c.typed?'':esc(c.typed)||'&nbsp;'}</span></div>${fix?`<p>The answer is <b>${f.ans}</b>. Type it to go on.</p>`:''}`;
+  const trick=fix?c.mn.reveal:c.hint?c.mn.hint:'';
+  return `<header class="col center"><h2>${Q.n===0&&c.phase==='ask'?(Q.won?'Level cleared!':'Good try!'):'Power up'}</h2><p class="soft">Every right answer earns a power-up.</p>${dots}</header>
+    <div class="sheet col center ${fix?'fix':good?'good':''}">${ask}${trick?`<p class="small soft">${esc(trick)}</p>`:''}</div>
+    ${word?`<div class="choices">${c.choices.map((d,i)=>`<button data-act="choose" data-v="${i}" class="${(fix||good)&&d===f.def?'right':''}">${esc(d)}</button>`).join('')}</div>${fix?'<div class="row" style="justify-content:center"><button class="btn" data-act="next">Got it</button></div>':''}`
+      :`<div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-act="key" data-v="${n}">${n}</button>`).join('')}<button class="alt" data-act="key" data-v="skip">${fix?'':'Not sure'}</button><button data-act="key" data-v="0">0</button><button class="alt" data-act="key" data-v="back" aria-label="Delete">⌫</button></div>`}`;
+}
+function answer(ok){
+  const me=p(),c=Q.cur,f=c.fact,ms=performance.now()-c.t0;if(c.phase!=='ask')return;
+  me.cards[f.key]=SRS.review(me.cards[f.key],{ok,ms,fastMs:Core.fastMs(f),due:c.due},Date.now());
+  if(c.isNew&&(!ok||ms>Core.fastMs(f)))Q.newHard++;
+  Q.marks[Q.n]=ok;if(ok){if(Q.n<B.QUIZ)Q.right++;me.stars++;}
+  else if(!Q.again){Q.again=true;Q.total++;}   // one miss adds one more question, so the missed card can come back before the level starts
+  Q.n++;Profiles.save(me);
+  if(ok){c.phase='good';beep([[660,.08],[880,.12]]);render();setTimeout(()=>{if(view==='quiz'&&Q.cur===c)nextQ();},f.kind==='vocab'?900:650);}
+  else{c.phase='fix';c.typed='';beep([[220,.18]]);render();}
+}
+function key(v){
+  if(view!=='quiz'||Q.cur.fact.kind==='vocab')return;const c=Q.cur,want=String(c.fact.ans);c.shake=false;
+  if(c.phase==='good')return;
+  if(v==='back'){c.typed=c.typed.slice(0,-1);return render();}
+  if(v==='skip'){if(c.phase==='ask')answer(false);return;}
+  if(c.typed.length>=want.length)return;
+  c.typed+=v;
+  if(c.phase==='fix'){if(c.typed===want)return nextQ();if(c.typed.length>=want.length){c.typed='';c.shake=true;}return render();}
+  if(c.typed.length>=want.length)return answer(c.typed===want);
+  render();
+}
+
+/* ---------- buttons and keys ---------- */
+const begin=()=>{const g=mine();S=B.start(g.level,earned,0);earned=B.powers(0);sparks=[];view='play';render();};
+const acts={
+  play:begin,go:begin,restart:()=>{mine().level=1;Profiles.save(p());begin();},
+  subject:v=>{mine().subject=v==='words'?'words':'math';Profiles.save(p());render();},
+  quit:()=>{cancelAnimationFrame(raf);const g=mine();g.best=Math.max(g.best,S.score);Profiles.save(p());view='start';render();},
+  home:()=>{view='start';render();},
+  key:v=>key(v),choose:v=>{const c=Q.cur;if(c.phase==='ask')answer(c.choices[v]===c.fact.def);},next:()=>{if(Q.cur.phase==='fix')nextQ();},
+};
+app.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b&&acts[b.dataset.act])acts[b.dataset.act](b.dataset.v);});
+addEventListener('keydown',e=>{if(e.metaKey||e.ctrlKey||e.altKey)return;
+  if(view==='play'){keys[e.key]=true;if(e.key===' '||e.key==='Enter'){e.preventDefault();B.launch(S);}if(e.key==='Escape')acts.quit();return;}
+  if(view==='quiz'){if(/^[0-9]$/.test(e.key))key(e.key);else if(e.key==='Backspace'){e.preventDefault();key('back');}else if(Q.cur.choices&&/^[1-3]$/.test(e.key))acts.choose(e.key-1);else if(e.key==='Enter')acts.next();}});
+addEventListener('keyup',e=>{keys[e.key]=false;});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){Profiles.flush();prev=0;}else if(Profiles.online&&Profiles.account()&&view==='start')Profiles.connect();});
+render();Profiles.connect();
+})();
+</script>
+</body>
+</html>

@@ -1,10 +1,12 @@
 // Backend for camden.games. Static files come from the assets binding; /api is one sign-in for the whole site plus each game's saved data.
 // Each account is its own Durable Object (named by the SHA-256 of the sign-in name) holding the password check, the signed-in devices and every game's documents.
-// A game reads and writes only under /api/data/<its name>. Add a new game's folder name to GAMES.
+// Saved data is kept in named stores, read and written at /api/data/<store>. "profiles" is the one every game shares: the players and their
+// progress (see site/shared/profiles.js). A game that needs a store of its own gets a line in STORES.
 // The browser stretches the password into a key before sending it, so the password itself never arrives here and this Worker only does one quick hash.
 import { DurableObject } from 'cloudflare:workers';
 
-const GAMES = new Set(['fact-dash']);
+// 'fact-dash' is the old name of the profiles store; installed copies of Fact Dash from before the rename still ask for it.
+const STORES = { profiles: 'profiles', 'fact-dash': 'profiles' };
 const NAME = /^[a-z0-9][a-z0-9._@+-]{2,63}$/, KEY = /^[0-9a-f]{64}$/, DOC = /^(meta|p_[a-z0-9]{1,40})$/;
 const MAX_DOC = 1_000_000, MAX_DOCS = 60, MAX_SESSIONS = 20, MAX_FAILS = 10, LOCK_MS = 15 * 60_000, COOKIE_AGE = 400 * 86_400;
 const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -40,9 +42,9 @@ export default {
       return json({ ok: true }, 200, cookie(url, '', 0));
     }
     const s = path.match(/^data\/([a-z0-9-]+)(?:\/([^/]+))?$/);
-    if (!s || !GAMES.has(s[1])) return json({ error: 'not found' }, 404);
+    if (!s || !Object.hasOwn(STORES, s[1])) return json({ error: 'not found' }, 404);
     if (!m || !NAME.test(m[2])) return signedOut();
-    const stub = await room(env, m[2]), session = await sha(m[1]), game = s[1], id = s[2];
+    const stub = await room(env, m[2]), session = await sha(m[1]), game = STORES[s[1]], id = s[2];
     if (!id) {
       if (req.method !== 'GET') return json({ error: 'method not allowed' }, 405);
       const docs = await stub.list(session, game);   // every visit also renews the cookie, so a device in use stays signed in
@@ -66,8 +68,12 @@ export class SyncRoom extends DurableObject {
     this.sql = ctx.storage.sql;
     // Nothing is written until someone signs up, so guessing at names leaves no storage behind.
     this.made = this.sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'auth'").toArray().length > 0;
-    // Documents are stored as "<game>/<id>". Accounts made when Fact Dash was the whole site get its name put in front, once.
-    if (this.made && this.get('layout') !== '2') { this.sql.exec("UPDATE docs SET id = 'fact-dash/' || id WHERE instr(id, '/') = 0"); this.set('layout', 2); }
+    // Documents are stored as "<store>/<id>". Older accounts are brought up to date once: first they had bare ids, then "fact-dash/<id>".
+    if (this.made && this.get('layout') !== '3') {
+      this.sql.exec("UPDATE docs SET id = 'profiles/' || id WHERE instr(id, '/') = 0");
+      this.sql.exec("UPDATE OR REPLACE docs SET id = 'profiles/' || substr(id, 11) WHERE substr(id, 1, 10) = 'fact-dash/'");
+      this.set('layout', 3);
+    }
   }
   get(k) { return this.sql.exec('SELECT v FROM auth WHERE k = ?', k).toArray()[0]?.v; }
   set(k, v) { this.sql.exec('INSERT OR REPLACE INTO auth (k, v) VALUES (?, ?)', k, String(v)); }
@@ -82,7 +88,7 @@ export class SyncRoom extends DurableObject {
     this.sql.exec('CREATE TABLE auth (k TEXT PRIMARY KEY, v TEXT)');
     this.sql.exec('CREATE TABLE sessions (h TEXT PRIMARY KEY, t REAL)');
     this.sql.exec('CREATE TABLE docs (id TEXT PRIMARY KEY, name TEXT, updated REAL, json TEXT)');
-    this.made = true; this.set('layout', 2); this.set('pass', pass); this.open(session);
+    this.made = true; this.set('layout', 3); this.set('pass', pass); this.open(session);
     return 'ok';
   }
   // Ten wrong passwords in a row lock new sign-ins for 15 minutes. Devices already signed in keep working.

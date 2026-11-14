@@ -1,5 +1,6 @@
-// Fact Dash's logic away from the page: math facts, vocabulary cards, mnemonics, saved data. No DOM, so test/app.test.mjs can run it.
-// Which card comes next, and what an answer does to a card, is the site's scheduler (../shared/srs.js, global SRS); this file never looks inside a card.
+// The site's question bank and saved-data rules: math facts, vocabulary cards, mnemonics, and the checks every saved profile passes through.
+// It began as Fact Dash's logic and every game uses it. No DOM, so test/app.test.mjs can run it.
+// Which card comes next, and what an answer does to a card, is the scheduler (srs.js, global SRS); this file never looks inside a card.
 // Loaded as a classic script after srs.js and words.js (which defines WORDS) so the app also works opened straight from a file.
 var Core=(()=>{
 const DAY=864e5;
@@ -136,7 +137,9 @@ function cleanPlayer(p){
   const best={};for(const [k,v] of Object.entries(obj(p.best)))best[String(k).slice(0,20)]=num(v);
   const days={};for(const [k,v] of Object.entries(obj(p.days)))if(/^\d{4}-\d\d-\d\d$/.test(k))days[k]=num(v);
   const rounds=(Array.isArray(p.rounds)?p.rounds:[]).filter(r=>r&&Object.hasOwn(MODES,r.mode)).map(r=>({t:num(r.t),mode:r.mode,secs:num(r.secs),score:num(r.score??r.right),right:num(r.right),wrong:num(r.wrong),range:r.range==='low'||r.range==='high'?r.range:'all'})).slice(-400);
-  return {id:String(p.id),name:p.name.trim().slice(0,14),av:typeof p.av==='string'?[...p.av].slice(0,4).join(''):'',created:num(p.created),updated:num(p.updated),subject:p.subject==='words'?'words':'math',set,cards,rounds,best,stars:num(p.stars),days};
+  // Other games keep their own data under games.<folder name>: a small plain object that is passed through as it is.
+  const games={};for(const [k,v] of Object.entries(obj(p.games)))if(/^[a-z0-9-]{1,30}$/.test(k)&&v&&typeof v==='object'&&!Array.isArray(v)){try{if(JSON.stringify(v).length<=20000)games[k]=JSON.parse(JSON.stringify(v));}catch{}}
+  return {id:String(p.id),name:p.name.trim().slice(0,14),av:typeof p.av==='string'?[...p.av].slice(0,4).join(''):'',created:num(p.created),updated:num(p.updated),subject:p.subject==='words'?'words':'math',set,cards,rounds,best,stars:num(p.stars),days,games};
 }
 function cleanWords(list){
   const seen=new Set(),str=(v,n)=>typeof v==='string'?v.trim().slice(0,n):'';
@@ -150,7 +153,7 @@ function toCSV(data){
   const rows=[COLS],row=o=>rows.push(COLS.map(c=>o[c]??''));
   for(const p of (data.players||[]).map(cleanPlayer).filter(Boolean)){
     const who={player_id:p.id,player:p.name};
-    row({record:'player',...who,when:iso(p.created),details:JSON.stringify({av:p.av,subject:p.subject,updated:p.updated,stars:p.stars,set:p.set,best:p.best,days:p.days})});
+    row({record:'player',...who,when:iso(p.created),details:JSON.stringify({av:p.av,subject:p.subject,updated:p.updated,stars:p.stars,set:p.set,best:p.best,days:p.days,games:p.games})});
     for(const r of p.rounds)row({record:'round',...who,key:r.range==='all'?'':r.range,when:iso(r.t),mode:r.mode,seconds:r.secs,right:r.right,wrong:r.wrong});
     for(const [k,c] of Object.entries(p.cards)){const v=SRS.view(c);row({record:'card',...who,key:k,when:iso(v.last),box:v.strength,due:iso(v.due),seen:v.seen,correct:v.correct,avg_ms:v.avgMs,details:JSON.stringify(c)});}
   }

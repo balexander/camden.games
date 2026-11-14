@@ -8,32 +8,84 @@
 <link rel="icon" type="image/png" href="fact-dash/icons/icon-192.png">
 <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#111728" media="(prefers-color-scheme: dark)">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@500;700&display=swap">
-<style>
-/* The home page: the same sheet of graph paper as the games, with one big tile for each game. To add a game, add its folder and a tile. */
-:root{--paper:#f3f6fb;--grid:#dbe4f2;--card:#ffffff;--ink:#1b2540;--soft:#5b6785;--line:#c9d3e6;--blue:#2457d6;--amber:#e08a00}
-@media (prefers-color-scheme: dark){:root{--paper:#111728;--grid:#1c2540;--card:#1c2440;--ink:#eef2ff;--soft:#a3aecb;--line:#34406a;--blue:#7ea2ff;--amber:#ffb84d;color-scheme:dark}}
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);font:500 16px/1.45 "Nunito","Segoe UI",system-ui,sans-serif;
-  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:22px 22px;
-  padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px))}
-main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
-h1,h2{font-family:"Baloo 2","Trebuchet MS","Segoe UI",sans-serif;line-height:1.1;margin:0}
-h1{font-size:2.3rem;font-weight:800} h2{font-size:1.5rem;font-weight:800;color:var(--blue)}
-p{margin:0;color:var(--soft)}
-.game{display:flex;gap:16px;align-items:center;background:var(--card);border:2px solid var(--line);border-radius:18px;padding:16px;color:inherit;text-decoration:none}
-.game:active{transform:translateY(2px)} .game:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
-.game img{width:72px;height:72px;border-radius:16px;flex:none}
-</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared/site.css">
 </head>
 <body>
-<main>
-  <header><h1>Camden Games</h1><p>Pick a game.</p></header>
-  <a class="game" href="fact-dash/"><img src="fact-dash/icons/icon-192.png" alt=""><span><h2>Fact Dash</h2><p>Math and words, one quick round at a time.</p></span></a>
-</main>
+<main id="app"></main>
+<script src="shared/srs.js"></script>
+<script src="shared/words.js"></script>
+<script src="shared/core.js"></script>
+<script src="shared/profiles.js"></script>
 <script>
+// The home page: pick who is playing, then pick a game. The grown-up signs in here once and every game uses that sign-in.
+// To add a game, add its folder and a line to GAMES.
+(()=>{
+const GAMES=[
+  {href:'fact-dash/',icon:'fact-dash/icons/icon-192.png',name:'Fact Dash',about:'Math and words, one quick round at a time.'},
+  {href:'brain-bricks/',icon:'brain-bricks/icon.svg',name:'Brain Bricks',about:'Smash the bricks. Answer questions to power up.'},
+];
+const AVS=['🦊','🐼','🦖','🐙','🦁','🐸','🦄','🐧','🚀','⚽','🐯','🦉'];
+const app=document.getElementById('app'),esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';'),db=Profiles.db;
+let view=Profiles.picked()?'games':'who',ui={av:AVS[0],adding:false,msg:'',acctTry:''};
+const status=()=>({site:'Saved online.',checking:'Looking for saved players…',error:'Could not reach the site. Saved on this device for now.'}[Profiles.status]||'Saved on this device.');
+
+function render(){
+  const p=Profiles.me();if(view==='games'&&!p)view='who';
+  app.innerHTML=view==='games'?gamesView(p):whoView();
+}
+function whoView(){
+  const acct=Profiles.account(),any=db.players.length>0;
+  const form=`<form class="sheet col" id="addForm"><h3>${any?'New player':'Who is playing?'}</h3>
+    <label class="col" for="pname"><span class="small soft">Your name</span><input type="text" id="pname" maxlength="14" autocomplete="off" placeholder="Type your name"></label>
+    <div class="avs" role="group" aria-label="Pick a buddy">${AVS.map(a=>`<button type="button" data-act="av" data-v="${a}" aria-pressed="${ui.av===a}">${a}</button>`).join('')}</div>
+    <div class="row"><button class="btn" type="submit">Let's go</button>${any?'<button class="btn ghost" type="button" data-act="cancelAdd">Cancel</button>':''}</div></form>`;
+  return `<header class="col"><h1>Camden Games</h1><p class="soft">${any?'Who is playing?':'Games for practising math and words.'}</p></header>
+    ${any?`<div class="who">${db.players.map(p=>`<button class="sheet" data-act="pick" data-v="${esc(p.id)}"><span class="av">${esc(p.av||AVS[0])}</span><h3>${esc(p.name)}</h3><span class="stat"><span class="star">★</span> ${p.stars}</span></button>`).join('')}${ui.adding?'':'<button class="sheet new" data-act="add"><span class="av">＋</span><h3>New player</h3><span class="small soft">Start from zero</span></button>'}</div>`:''}
+    ${ui.adding||!any?form:''}
+    ${Profiles.online&&!acct?`<details class="sheet col"${!any||ui.msg||ui.acctTry?' open':''}><summary>Grown-ups: sign in to save online</summary>
+      <form class="col" id="acctForm" style="margin-top:10px"><label class="col" for="acctName"><span class="small soft">Name or email</span><input type="text" id="acctName" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" value="${esc(ui.acctTry)}"></label>
+      <label class="col" for="acctPw"><span class="small soft">Password, 8 or more characters</span><input type="password" id="acctPw" name="password" autocomplete="current-password" maxlength="200"></label>
+      <div class="row"><button class="btn" type="submit">Sign in</button><button class="btn ghost" type="button" data-act="signUp">Create account</button></div></form></details>`:''}
+    ${acct?`<div class="row"><span class="small soft grow">Signed in as <b>${esc(acct)}</b></span><button class="btn ghost" data-act="signOut">Sign out</button></div>`:''}
+    <p class="small" id="msg" aria-live="polite">${esc(ui.msg)}</p>
+    <p class="small soft" id="status">${status()}</p>`;
+}
+function gamesView(p){
+  return `<header class="row"><span class="av">${esc(p.av||AVS[0])}</span><div class="grow"><h1>Hi, ${esc(p.name)}!</h1><p class="soft">Pick a game.</p></div><button class="btn ghost" data-act="who">Switch</button></header>
+    ${GAMES.map(g=>`<a class="sheet game" href="${g.href}"><img src="${g.icon}" alt=""><span><h2>${g.name}</h2><p class="soft">${g.about}</p></span></a>`).join('')}
+    <p class="small soft" id="status">${status()}</p>`;
+}
+async function signIn(path){
+  const tell=t=>{ui.msg=t;const el=document.getElementById('msg');if(el)el.textContent=t;},raw=document.getElementById('acctName')?.value||'',name=Core.cleanLogin(raw),pw=document.getElementById('acctPw')?.value||'';ui.acctTry=raw;
+  if(!name)return tell('The name needs 3 or more letters or numbers and no spaces. An email address works too.');
+  if(pw.length<8)return tell('The password needs 8 or more characters.');
+  tell(path==='signup'?'Creating the account…':'Signing in…');ui.msg='';
+  const r=await Profiles.signIn(path,name,pw);
+  if(!r.ok)return tell({401:'That name and password do not match.',409:'That name is taken. Sign in, or pick another name.',429:'Too many wrong tries. Wait 15 minutes, then try again.',403:'New accounts are closed on this site.'}[r.status]||'Could not sign in. Check the connection and try again.');
+  ui.acctTry='';ui.msg=Profiles.status==='site'?(path==='signup'?'Account made. Players are saved online from now on.':'Signed in. Players are saved online from now on.'):'';render();
+}
+const acts={
+  pick:v=>{Profiles.choose(v);view='games';ui.msg='';render();},who:()=>{Profiles.choose(null);view='who';ui.adding=false;render();},
+  add:()=>{ui.adding=true;render();document.getElementById('pname')?.focus();},cancelAdd:()=>{ui.adding=false;render();},
+  av:v=>{ui.av=v;const n=document.getElementById('pname')?.value||'';render();const el=document.getElementById('pname');if(el)el.value=n;},
+  signUp:()=>signIn('signup'),signOut:async()=>{await Profiles.signOut();ui.msg='Signed out. The players stay on this device.';render();},
+};
+app.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b&&acts[b.dataset.act])acts[b.dataset.act](b.dataset.v);});
+app.addEventListener('submit',e=>{e.preventDefault();
+  if(e.target.id==='acctForm')return signIn('login');
+  const el=document.getElementById('pname'),name=el.value.trim();if(!name){el.focus();return;}
+  const p=Profiles.add(name,ui.av);if(!p)return;Profiles.choose(p.id);ui.adding=false;view='games';render();});
+// Redraw when saved players arrive, keeping whatever is being typed.
+Profiles.on(redraw=>{const n=Profiles.takeNotice();if(n)ui.msg=n;
+  if(!redraw){const el=document.getElementById('status');if(el)el.textContent=status();return;}
+  const keep=[...app.querySelectorAll('input')].map(e=>[e.id,e.value]),focus=document.activeElement?.id;
+  render();for(const [id,v] of keep){const e=document.getElementById(id);if(e)e.value=v;}if(focus)document.getElementById(focus)?.focus();});
+render();Profiles.connect();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)Profiles.flush();else if(Profiles.online&&Profiles.account())Profiles.connect();});
 // Clears the offline copy left from when Fact Dash was the whole site (see sw.js).
 if('serviceWorker' in navigator)navigator.serviceWorker.getRegistration('/').then(r=>{if(r&&new URL(r.scope).pathname==='/')r.update().catch(()=>{});}).catch(()=>{});
+})();
 </script>
 </body>
 </html>
