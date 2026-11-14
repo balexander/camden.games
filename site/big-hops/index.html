@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Big Hops</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111728" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="../shared/site.css">
+<style>
+/* One screen at a time: the start card, the number line, or the end of a round. */
+.center{align-items:center;text-align:center}
+.big{font:800 3.2rem/1 var(--display);font-variant-numeric:tabular-nums}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{font-weight:700;padding:8px 14px;border-radius:999px;border:2px solid var(--line);background:var(--card);min-height:44px}
+.seg button[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:var(--blue-ink)}
+.dots{display:flex;gap:6px;justify-content:center}
+.dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--line)}
+.dots i.ok{background:var(--good);border-color:var(--good)} .dots i.no{background:var(--miss);border-color:var(--miss)} .dots i.now{border-color:var(--blue)}
+.q{font:800 clamp(2.6rem,12vw,3.6rem)/1.1 var(--display);font-variant-numeric:tabular-nums}
+#app.play .sheet{padding:14px 6px;width:100%}
+.peb{display:flex;gap:5px;align-items:center;justify-content:center;flex-wrap:wrap;min-height:22px}
+.peb i{width:18px;height:18px;border-radius:50%;background:var(--amber);border:2px solid var(--amber)}
+.peb i.used{background:none;opacity:.4} .peb i.gap{width:8px;border:0;background:none}
+#line{width:100%;height:auto;display:block;cursor:pointer;-webkit-user-select:none;user-select:none}
+#line:focus-visible{outline:3px solid var(--amber);outline-offset:2px;border-radius:12px}
+.msg{min-height:4.4em;padding-inline:10px} .msg b{font:800 1.25rem var(--display)}
+.fix{background:var(--miss-wash);border-color:var(--miss)} .good{background:var(--good-wash);border-color:var(--good)}
+.pals{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.pals button,.pals span{font-size:1.7rem;width:48px;height:48px;border-radius:12px;border:2px solid transparent;display:grid;place-items:center}
+.pals button[aria-pressed="true"]{border-color:var(--blue);background:var(--blue-wash)}
+.pals span{filter:grayscale(1);opacity:.35}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script src="../shared/srs.js"></script>
+<script src="../shared/words.js"></script>
+<script src="../shared/core.js"></script>
+<script src="../shared/profiles.js"></script>
+<script src="game.js"></script>
+<script>
+// Big Hops, the page. Hops (game.js) knows the rules; this file draws the number line, moves the hopper and saves.
+// Who is playing and what they know come from Profiles and the scheduler, shared with every other game.
+(()=>{
+const GAME='big-hops',H=Hops,app=document.getElementById('app'),esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(!Profiles.me()){location.replace('../');return;}   // nobody picked yet: the home page asks who is playing
+const p=()=>Profiles.me(),mine=()=>{const me=p();me.games[GAME]=H.clean(me.games[GAME]);return me.games[GAME];};
+let view='start',Q=null,busy=false,raf=0,actx=null;
+Profiles.busyWith(()=>view==='start'?null:Profiles.db.cur);
+Profiles.on(()=>{if(!p())location.replace('../');else if(view==='start')render();});
+
+// iPhones and iPads only allow sound that starts from a touch, so the first touch wakes the sound up.
+function wake(){if(!p()?.set.sound)return;try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();}catch{}}
+function beep(notes){if(!p()?.set.sound||!actx||actx.state!=='running')return;try{let t=actx.currentTime;for(const [f,d] of notes){const o=actx.createOscillator(),g=actx.createGain();o.type='triangle';o.frequency.value=f;g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+d);t+=d*.8;}}catch{}}
+
+/* ---------- screens ---------- */
+function render(){app.className=view;app.innerHTML={start:startView,play:playView,done:doneView}[view]();}
+const pal=()=>H.FRIENDS[mine().pal][1];
+function startView(){
+  const me=p(),g=mine(),out=H.friends(g.gems),next=H.nextFriend(g.gems);
+  return `<header class="row"><a class="btn ghost" href="../">← Games</a><h2 class="grow">Big Hops</h2></header>
+    <div class="sheet col center"><span class="av">${pal()}</span><h2>${esc(me.name)}</h2>
+      <p class="soft">Gems</p><div class="big">💎 ${g.gems}</div>
+      <button class="btn" data-act="play">Play</button>
+      <p class="small soft">${g.rounds?`Best round ${g.best} gems`:`${H.ROUND} questions, no clock.`}</p></div>
+    <div class="sheet col"><h3>Your hoppers</h3>
+      <div class="pals" role="group" aria-label="Pick a hopper">${H.FRIENDS.map(([need,pic,name],i)=>i<out?`<button data-act="pal" data-v="${i}" aria-pressed="${g.pal===i}" aria-label="${name}">${pic}</button>`:`<span aria-label="${name}, at ${need} gems">${pic}</span>`).join('')}</div>
+      <p class="small soft">${next==null?'You found every hopper!':`${next-g.gems} more gem${next-g.gems===1?'':'s'} for the next hopper.`}</p></div>
+    <div class="sheet col"><h3>Questions</h3><div class="seg" role="group" aria-label="Kind of questions">
+      ${[['both','Both'],['add','Adding'],['sub','Taking away']].map(([v,t])=>`<button data-act="ops" data-v="${v}" aria-pressed="${g.ops===v}">${t}</button>`).join('')}</div>
+      <p class="small soft">Tap the stone to land on. Each stone costs one pebble. Fewer hops win more gems, and one big hop wins the most.</p></div>`;
+}
+// The line is drawn 360 units wide and stretches to fit.
+const VW=360,VH=150,PX=18,Y=112,gapOf=q=>(VW-2*PX)/(q.hi-q.lo),X=(q,v)=>PX+(v-q.lo)*gapOf(q),lift=(xa,xb)=>Math.min(74,24+Math.abs(xb-xa)*.5);
+const arc=(q,[a,b],cls)=>{const xa=X(q,a),xb=X(q,b),h=lift(xa,xb),ghost=cls==='ghost';
+  return `<path d="M${xa} ${Y-16} Q${(xa+xb)/2} ${Y-16-h} ${xb} ${Y-16}" fill="none" stroke="var(${ghost?'--soft':'--blue'})" stroke-width="3" stroke-linecap="round"${ghost?' stroke-dasharray="2 7" opacity=".7"':''}/>`
+    +`<text x="${(xa+xb)/2}" y="${Y-22-h/2}" text-anchor="middle" font-size="13" font-weight="800" fill="var(${ghost?'--soft':'--blue'})">${q.dir>0?'+':'−'}${Math.abs(b-a)}</text>`;};
+function lineSvg(c){
+  const q=c.q,s=c.s,g=gapOf(q),r=Math.min(12,g*.46),fix=c.phase==='fix';
+  let out=`<line x1="6" x2="${VW-6}" y1="${Y}" y2="${Y}" stroke="var(--line)" stroke-width="4" stroke-linecap="round"/>`;
+  if(fix)out+=c.ghost.map(h=>arc(q,h,'ghost')).join('');
+  out+=s.hops.map(h=>arc(q,h)).join('');
+  for(let v=q.lo;v<=q.hi;v++){const ten=v%10===0,five=v%5===0,x=X(q,v),goal=(fix||c.phase==='trick')&&v===q.ans;
+    out+=`<circle cx="${x}" cy="${Y}" r="${ten?r+1:r}" fill="var(${ten?'--amber':'--card'})" stroke="var(${goal?'--good':five?'--amber':'--line'})" stroke-width="${goal?4:2}"/>`
+      +`<text x="${x}" y="${Y+r*.36}" text-anchor="middle" font-size="${Math.min(12,g*.52)}" font-weight="800" fill="var(${ten?'--card':'--ink'})">${v}</text>`;
+    if(c.keys&&v===c.cursor)out+=`<circle cx="${x}" cy="${Y}" r="${r+5}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-dasharray="3 3"/>`;}
+  out+=`<text id="pal" x="${X(q,c.at)}" y="${Y-16}" text-anchor="middle" font-size="24">${pal()}</text>`;
+  return `<svg id="line" viewBox="0 0 ${VW} ${VH}" tabindex="0" role="application" aria-label="Number line from ${q.lo} to ${q.hi}. The hopper is on ${c.at}. Tap a stone, or use the arrow keys and Enter.">${out}</svg>`;
+}
+const GOOD={known:'You knew it!',smart:'Smart hops!',chunks:'Nice hopping!',ones:'You got there!'};
+function playView(){
+  const c=Q.cur,q=c.q,s=c.s,used=q.n-s.left;
+  const dots=`<div class="dots grow" aria-label="Question ${Math.min(Q.n+1,Q.total)} of ${Q.total}">${Array.from({length:Q.total},(_,i)=>`<i class="${Q.marks[i]===true?'ok':Q.marks[i]===false?'no':i===Q.n?'now':''}"></i>`).join('')}</div>`;
+  let peb='';for(let i=0;i<q.n;i++)peb+=(i&&i%5===0?'<i class="gap"></i>':'')+`<i class="${i<used?'used':''}"></i>`;
+  const left=`${s.left} pebble${s.left===1?'':'s'} left.`;
+  const msg=c.phase==='good'?`<b>${'💎'.repeat(c.rate.gems)} ${GOOD[c.rate.kind]}</b><br>${q.text} = ${q.ans}${c.rate.kind==='ones'?`<br><span class="small soft">Next time: ${esc(c.trick.say)}</span>`:''}`
+    :c.phase==='trick'?`<b>${c.why}</b><br>Watch the hops.`
+    :c.phase==='fix'?(c.s.over?'<b>That is it!</b>':`${esc(c.trick.say)}<br><b>${c.note||'Your turn. Hop it!'}</b>`)
+    :s.hops.length?left:c.hint?esc(c.trick.hint):'Tap the stone to land on.';
+  return `<div class="hud row"><button class="btn ghost" data-act="quit" aria-label="Stop playing">✕</button>${dots}<span class="stat">💎 ${Q.gems}</span></div>
+    <div class="sheet col center ${c.phase==='good'?'good':c.phase==='fix'||c.phase==='trick'?'fix':''}">
+      <div class="q">${q.text}</div>
+      <div class="peb" role="img" aria-label="${q.n} pebbles, ${s.left} left">${peb}</div>
+      ${lineSvg(c)}
+      <p class="msg" aria-live="polite">${msg}</p></div>
+    ${c.phase==='ask'?'<div class="row" style="justify-content:center"><button class="btn ghost" data-act="show">Show me</button></div>':''}`;
+}
+function doneView(){
+  const g=mine(),was=H.friends(g.gems-Q.gems),now=H.friends(g.gems),next=H.nextFriend(g.gems),right=Q.marks.filter(Boolean).length;
+  return `<header class="col center"><h2>${Q.best&&Q.gems>Q.best?'Best round yet!':'Round done!'}</h2><p class="soft">${right} of ${Q.marks.length} landed</p></header>
+    <div class="sheet col center"><span class="av">${pal()}</span><div class="big">💎 ${Q.gems}</div>
+      ${now>was?`<p><b>New hopper: ${H.FRIENDS[now-1][1]} ${H.FRIENDS[now-1][2]}!</b></p>`:next==null?'':`<p class="small soft">${next-g.gems} more for the next hopper.</p>`}</div>
+    <div class="row" style="justify-content:center"><button class="btn" data-act="play">Play again</button><button class="btn ghost" data-act="home">Stop for now</button></div>`;
+}
+
+/* ---------- a round ---------- */
+function startRound(){
+  const me=p(),g=mine(),o={range:me.set.range},kinds=g.ops==='both'?['add','sub']:[g.ops];
+  const deck=kinds.flatMap(k=>Core.items(k,o)).filter(f=>H.ask(f)).sort((x,y)=>x.rank-y.rank||x.size-y.size);
+  Q={n:0,total:H.ROUND,again:false,marks:[],recent:[],newHard:0,order:me.set.order,deck,gems:0,best:g.best};
+  view='play';nextQ();
+}
+function nextQ(){
+  if(Q.n>=Q.total){const me=p(),g=mine();g.rounds++;g.best=Math.max(g.best,Q.gems);Profiles.save(me);view='done';beep([[523,.09],[659,.09],[784,.09],[1047,.2]]);return render();}
+  const me=p(),pick=SRS.pick(me.cards,Q.deck,Q,Date.now()),f=pick.fact,q=H.ask(f),lvl=SRS.view(me.cards[f.key]).level;
+  Q.recent=[...Q.recent,f.key].slice(-Math.min(2,Q.deck.length-1));
+  Q.cur={fact:f,isNew:pick.isNew,q,s:H.begin(q),at:q.from,cursor:q.from,keys:Q.cur?.keys||false,phase:'ask',t0:performance.now(),ms:0,trick:H.trick(q),ghost:[],note:'',why:'',
+    hint:me.set.hints==='always'||(me.set.hints==='fade'&&lvl<3)};
+  busy=false;render();
+}
+const live=c=>view==='play'&&Q&&Q.cur===c;
+// Moves the hopper along the arc from stone a to stone b, then calls done.
+function fly(c,a,b,done){
+  const q=c.q,el=document.getElementById('pal'),xa=X(q,a),xb=X(q,b),h=lift(xa,xb),T=300+Math.abs(b-a)*22,t0=performance.now();
+  if(calm||!el)return done();
+  busy=true;cancelAnimationFrame(raf);
+  const step=t=>{if(!live(c))return;const u=Math.min(1,(t-t0)/T),w=1-u;
+    el.setAttribute('x',w*w*xa+2*w*u*(xa+xb)/2+u*u*xb);el.setAttribute('y',Y-16-2*w*u*h);
+    if(u<1)raf=requestAnimationFrame(step);else{busy=false;done();}};
+  raf=requestAnimationFrame(step);
+}
+function tap(v){
+  if(view!=='play'||busy)return;const c=Q.cur,s=c.s,from=s.pos;if(c.phase!=='ask'&&c.phase!=='fix')return;
+  if(c.phase==='ask'&&!s.hops.length)c.ms=performance.now()-c.t0;   // the time to the first tap is what tells known from counted
+  const r=H.hop(c.q,s,v);if(r==='ignored')return;
+  if(r==='far'){if(c.phase==='ask')return miss('Too far!');s.over='';c.note='Too far! Try again.';beep([[220,.12]]);return render();}
+  c.note='';c.cursor=v;beep([[440+20*Math.abs(v-from),.07]]);render();
+  fly(c,from,v,()=>{c.at=v;if(r==='landed')landed(c);else render();});
+}
+function landed(c){
+  if(c.phase==='fix'){beep([[660,.08],[880,.12]]);render();return setTimeout(()=>{if(live(c))nextQ();},900);}
+  const me=p(),g=mine(),f=c.fact,a=H.answer(c.q,c.s,c.ms,Core.fastMs(f));c.rate=H.rate(c.q,c.s.hops);
+  me.cards[f.key]=SRS.review(me.cards[f.key],a,Date.now());
+  if(c.isNew&&(a.hint||a.ms>a.fastMs))Q.newHard++;
+  Q.marks[Q.n]=true;Q.n++;Q.gems+=c.rate.gems;g.gems+=c.rate.gems;me.stars++;Profiles.save(me);
+  c.phase='good';beep(c.rate.gems===3?[[660,.08],[880,.08],[1047,.14]]:[[660,.08],[880,.12]]);render();
+  setTimeout(()=>{if(live(c))nextQ();},c.rate.kind==='ones'?2600:1500);
+}
+// A miss: too far, or "Show me". The card is marked, the hopper shows the trip, and then the player makes it too.
+function miss(why){
+  const me=p(),c=Q.cur,f=c.fact;if(c.phase!=='ask'||busy)return;
+  me.cards[f.key]=SRS.review(me.cards[f.key],{ok:false,ms:performance.now()-c.t0,fastMs:Core.fastMs(f)},Date.now());
+  if(c.isNew)Q.newHard++;
+  Q.marks[Q.n]=false;Q.n++;if(!Q.again){Q.again=true;Q.total++;}   // one miss adds one more question, so the missed card can come back in the round
+  Profiles.save(me);
+  c.phase='trick';c.why=why;c.s=H.begin(c.q);c.at=c.q.from;beep([[220,.18]]);render();
+  const stops=c.trick.stops,run=i=>{if(!live(c))return;
+    if(i>=stops.length)return setTimeout(()=>{if(!live(c))return;c.ghost=c.s.hops;c.s=H.begin(c.q);c.at=c.cursor=c.q.from;c.phase='fix';render();},1100);
+    const from=c.s.pos;H.hop(c.q,c.s,stops[i]);render();fly(c,from,stops[i],()=>{c.at=stops[i];render();setTimeout(()=>run(i+1),450);});};
+  setTimeout(()=>run(0),700);
+}
+
+/* ---------- buttons and keys ---------- */
+const acts={
+  play:startRound,home:()=>{view='start';render();},quit:()=>{cancelAnimationFrame(raf);busy=false;view='start';render();},
+  ops:v=>{mine().ops=v;Profiles.save(p());render();},pal:v=>{mine().pal=+v;Profiles.save(p());render();},
+  show:()=>miss('Here is a trick.'),
+};
+app.addEventListener('click',e=>{wake();
+  const line=e.target.closest('#line');
+  if(line&&view==='play'){const r=line.getBoundingClientRect(),q=Q.cur.q;Q.cur.keys=false;return tap(Math.max(q.lo,Math.min(q.hi,Math.round(q.lo+((e.clientX-r.left)/r.width*VW-PX)/gapOf(q)))));}
+  const b=e.target.closest('[data-act]');if(b&&acts[b.dataset.act])acts[b.dataset.act](b.dataset.v);});
+addEventListener('keydown',e=>{wake();if(e.metaKey||e.ctrlKey||e.altKey||view!=='play')return;const c=Q.cur,q=c.q;
+  if(e.key==='Escape')return acts.quit();
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();if(busy)return;c.keys=true;c.cursor=Math.max(q.lo,Math.min(q.hi,c.cursor+(e.key==='ArrowRight'?1:-1)));render();document.getElementById('line')?.focus();}
+  else if((e.key==='Enter'||e.key===' ')&&c.keys&&!e.target.closest('button')){e.preventDefault();tap(c.cursor);document.getElementById('line')?.focus();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)Profiles.flush();else if(Profiles.online&&Profiles.account()&&view==='start')Profiles.connect();});
+render();Profiles.connect();
+})();
+</script>
+</body>
+</html>

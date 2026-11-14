@@ -2,10 +2,11 @@
 
 A small site of kids' learning games at https://camden.games. Each game is a folder of plain files under `site/`, with no build step and no packages. One Cloudflare Worker serves the site and stores saved data.
 
-There are two games:
+There are three games:
 
 - **Fact Dash** (`site/fact-dash/`): flash-card rounds for math facts and vocabulary, played with a grown-up.
 - **Brain Bricks** (`site/brain-bricks/`): a brick breaker. After each level the player answers three questions, and each right answer earns a power-up for the next level.
+- **Big Hops** (`site/big-hops/`): a hopper on a number line. Each adding or subtracting fact is a trip along the stones, and fewer hops win more gems.
 
 ## How the pieces fit
 
@@ -21,7 +22,7 @@ Everything the games share lives in `site/shared/`:
 | `srs.js` | The scheduler: which card comes next and what an answer does to a card (see below) |
 | `core.js`, `words.js` | The question bank (math facts, vocabulary, memory tricks) and the checks every saved profile passes through |
 | `profiles.js` | Who is playing: the profiles, saving them in the browser, signing in, and keeping a copy online |
-| `site.css` | The look shared by the home page and Brain Bricks |
+| `site.css` | The look shared by the home page, Brain Bricks and Big Hops |
 
 ## Adding a game
 
@@ -123,6 +124,43 @@ Quick flash-card rounds for math facts and vocabulary, built for an 8-year-old a
 - **Players and progress:** any number of players, picked on startup, each with best scores, a score chart and a map of every card.
 - **Saved data:** progress is kept on the device after every answer. Sign in with a name and password (the site's home page, Fact Dash's first screen, or Grown-ups > Online account) and it is also kept online, so any device signed in to the same account shows the same players. Saved data saves everything as one CSV file.
 
+## Big Hops
+
+Fact Dash trains how fast an answer is recalled. Big Hops trains the number sense underneath: seeing 5, 10 and 20 as landmarks and jumping between them, so a child stops counting by ones.
+
+### What it does
+
+- **One action.** A hopper stands on a number line of stepping stones. The second number of the fact becomes pebbles, each stone costs one pebble, and the player taps the stone to land on. When the pebbles run out, that stone is the answer.
+- **No clock on screen.** The score is how few hops the trip takes. One hop straight to the answer, or two hops that stop on a 5 or a 10, earn 3 gems. Other trips of two or three hops earn 2, and longer ones earn 1.
+- **A miss is a lesson.** Tapping further than the pebbles reach, or tapping "Show me", makes the hopper show the trip with its number strategy ("8 needs 2 to make 10. Then 4 more lands on 14."). The player then makes the trip too, and the game goes on.
+- **Rounds are short.** A round is 8 questions, and one more when a card was missed, so it can come back. Gems unlock new hoppers to play as.
+- **Which facts.** Adding and subtracting within 20, narrowed by the player's Fact Dash setting for number size. Adding starts on the bigger number, whichever way round the sum is written. The 45 subtraction facts that take away more than 10 (such as 19 − 16) are left out: they would need stones too small to tap on a phone, and are better seen as the gap between two numbers. They are still asked in Fact Dash and Brain Bricks. Multiplying and dividing are not in this version.
+
+### What the scheduler is told
+
+Questions come from `SRS.pick` and answers go back through `SRS.review`, on the same cards as the other games.
+
+| What the player does | What the scheduler is told | What happens to the card |
+| --- | --- | --- |
+| One hop to the answer, tapped within the card's quick time | Right and quick | It waits longer |
+| The answer in several hops, or one hop after a long pause | Right but worked out (`hint: true`, or a slow time) | It comes back sooner |
+| Further than the pebbles reach, or "Show me" | Wrong | It is relearned in the round |
+
+The time to the first tap is measured and never shown. Without it, a player could count the stones by eye, tap once, and the card would be marked as known by heart in every game.
+
+### Why it is built this way
+
+Each reference was looked up on 2026-11-14 and read through its abstract or a summary by others, not the full text.
+
+- **Number lines and pictures are the recommended tools.** The US Department of Education's practice guide for struggling elementary students recommends number lines and other visual representations. It also recommends timed activities for fluency, which is Fact Dash's job [1].
+- **Understanding plus practice works, and speed adds to it.** At-risk first graders tutored in number knowledge did better than untutored ones whether their practice was speeded or not. Speeded practice gave the larger gains on arithmetic [2].
+- **Games on a straight line of numbers build a sense of size.** About an hour of a linear 1-to-10 board game improved preschoolers' number line estimation, and a circular board did not [3]. Those children were much younger than this game's player.
+- **Scoring by fewest hops is a judgement.** No study of it was found. Giving two hops through a landmark the same gems as one hop is also a judgement: it rewards the strategy while the scheduler still waits for the fact to be known.
+
+1. What Works Clearinghouse (2021). [Assisting students struggling with mathematics: intervention in the elementary grades](https://ies.ed.gov/ncee/wwc/practiceguide/26). Practice guide WWC 2021006, US Institute of Education Sciences.
+2. Fuchs and others (2013). [Effects of first-grade number knowledge tutoring with contrasting forms of practice](https://pmc.ncbi.nlm.nih.gov/articles/PMC3779611). Journal of Educational Psychology 105(1), 58-77.
+3. Siegler and Ramani (2009). [Playing linear number board games, but not circular ones, improves low-income preschoolers' numerical understanding](https://ies.ed.gov/ncee/wwc/study/73725). Journal of Educational Psychology 101(3), 545-560.
+
 ## Run it
 
 ```
@@ -167,6 +205,8 @@ For the App Store later, the same folder can be wrapped with Capacitor on a Mac 
 | `site/shared/` | What every game shares: scheduler, question bank, profiles, styles (see "How the pieces fit") |
 | `site/brain-bricks/game.js` | Brain Bricks' logic with no page access: levels, ball and paddle, power-ups |
 | `site/brain-bricks/index.html` | Brain Bricks' screens: the field, the questions between levels, the rewards |
+| `site/big-hops/game.js` | Big Hops' logic with no page access: turning a fact into a trip, scoring it, the number strategies |
+| `site/big-hops/index.html` | Big Hops' screens: the number line, the hopper, the gems |
 | `site/fact-dash/sw.js`, `site/fact-dash/manifest.webmanifest`, `site/fact-dash/icons/` | Installable-app shell and offline cache |
 | `worker/index.js`, `wrangler.jsonc` | Cloudflare Worker: serves `site/`, checks sign-ins and stores each account's profiles in a Durable Object |
 | `serve.mjs` | Local static server for `npm start`, without accounts |
@@ -174,6 +214,7 @@ For the App Store later, the same folder can be wrapped with Capacitor on a Mac 
 | `test/app.test.mjs` | Tests for the logic, the word list, the CSV format and the app shell |
 | `test/srs.test.mjs` | Tests for the scheduler: the contract games rely on, and the current algorithm |
 | `test/bricks.test.mjs` | Tests for Brain Bricks' logic |
+| `test/hops.test.mjs` | Tests for Big Hops' logic |
 | `test/api.test.mjs` | Runs the Worker in `wrangler dev` and tests accounts and saving |
 
 ## Changing things
