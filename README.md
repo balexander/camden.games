@@ -10,6 +10,20 @@ There is one game so far, Fact Dash.
 2. Add a tile for it to `site/index.html`.
 3. If it saves data online, add its folder name to `GAMES` in `worker/index.js`. It then reads and writes at `/api/data/<folder name>`, and signs in through `/api/signup`, `/api/login` and `/api/logout` like Fact Dash does.
 
+## The scheduler
+
+`site/shared/srs.js` is the spaced-repetition algorithm for the whole site: it decides which card to ask next and what an answer does to a card. Every game loads it with `<script src="../shared/srs.js"></script>` and uses the global `SRS`. It is the only file that knows how a saved card is laid out, so the algorithm can be replaced by rewriting that one file.
+
+| Function | What it does |
+| --- | --- |
+| `SRS.review(card, {ok, ms, fastMs, due}, now)` | Returns the card after an answer. `fastMs` is the time that counts as quick for this card, and `due` is false for extra practice of a card that was not due. |
+| `SRS.pick(cards, deck, session, now, rnd)` | Chooses the next card from a deck. Returns `{fact, due, isNew}`. |
+| `SRS.view(card)` | Describes a card for display: `{seen, correct, avgMs, last, due, level, strength}`. Level is 0 for not seen, 1 for just missed, 2 and 3 for learning, 4 for strong. |
+| `SRS.mastery(cards, deck)` | Counts a deck: `{strong, learning, total}`. |
+| `SRS.clean(saved)` | Checks a card read back from storage. It must accept cards saved by every earlier version. |
+
+`test/srs.test.mjs` has two groups. The "contract" tests describe what games rely on and must pass for any algorithm. The others pin down the current algorithm (Leitner boxes) and are replaced along with it.
+
 ## Fact Dash
 
 Quick flash-card rounds for math facts and vocabulary, built for an 8-year-old and the grown-up sitting next to him. He says the answer, the grown-up taps Yes or No, and the app decides which card comes next.
@@ -66,13 +80,15 @@ For the App Store later, the same folder can be wrapped with Capacitor on a Mac 
 | `site/index.html` | The site's home page, with a tile for each game |
 | `site/sw.js` | Clears the offline copy left on devices from when Fact Dash was the whole site |
 | `site/fact-dash/index.html` | Fact Dash's interface and styles |
-| `site/fact-dash/core.js` | Game logic with no page access: decks, memory tricks, scheduling, saved-data checks, CSV |
+| `site/shared/srs.js` | The scheduler (spaced repetition), shared by every game |
+| `site/fact-dash/core.js` | Fact Dash's logic with no page access: decks, memory tricks, saved-data checks, CSV |
 | `site/fact-dash/words.js` | Built-in vocabulary |
 | `site/fact-dash/sw.js`, `site/fact-dash/manifest.webmanifest`, `site/fact-dash/icons/` | Installable-app shell and offline cache |
 | `worker/index.js`, `wrangler.jsonc` | Cloudflare Worker: serves `site/`, checks sign-ins and stores each account's data for every game in a Durable Object |
 | `serve.mjs` | Local static server for `npm start`, without accounts |
 | `build-artifact.mjs` | Builds the single-file Claude artifact copy of Fact Dash |
 | `test/app.test.mjs` | Tests for the logic, the word list, the CSV format and the app shell |
+| `test/srs.test.mjs` | Tests for the scheduler: the contract games rely on, and the current algorithm |
 | `test/api.test.mjs` | Runs the Worker in `wrangler dev` and tests accounts and saving |
 
 ## Changing things

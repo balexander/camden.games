@@ -6,12 +6,13 @@ A site of kids' games. The first and only game so far is Fact Dash, a practice a
 - A static site in site/ with no build step: site/index.html is the home page and each game is a folder beside it (site/fact-dash/). The only server-side code is the Worker in worker/index.js (with wrangler.jsonc): it serves site/, checks name-and-password sign-ins for the whole site, and stores each account's data for every game in a SQLite Durable Object (one per account), as documents named "<game>/<id>". Keep the games free of packages and keep the Worker small.
 - The Worker's name in wrangler.jsonc stays fact-dash. The saved data belongs to the Worker of that name, so renaming it would start an empty database.
 - The sign-in is shared by every game. A game's saved data is its own: it uses /api/data/<its folder name>, and that name must be in GAMES in the Worker.
+- site/shared/srs.js is the scheduler (spaced repetition) for every game, and the only code that knows what is inside a saved card. Games keep the cards it returns and call SRS.view for anything they show; they never read a card's fields. Keep the five functions and the contract tests in test/srs.test.mjs working when the algorithm changes, and keep SRS.clean loading cards saved by earlier versions.
 - The rest of this file is about Fact Dash.
 - The audience is an 8-year-old with ADHD and weak number sense, playing with a grown-up who marks spoken answers Yes or No. Keep screens simple, text short and sessions brief.
 - Memory tricks follow the evidence discussed with the owner: number strategies anchored on 5s and 10s for math, silly pictures only for the six stubborn times facts, and sound-alike (keyword) or word-part cues for vocabulary.
 
 ## Working practices
-- site/fact-dash/core.js holds all logic that does not touch the page; test/app.test.mjs loads it with site/fact-dash/words.js. Put new logic there and test it.
+- site/fact-dash/core.js holds all of Fact Dash's logic that does not touch the page; test/app.test.mjs loads it with site/shared/srs.js and site/fact-dash/words.js. Put new logic there and test it.
 - Saved data lives in localStorage under factdash.v1, in the site's account store (signed-in name in localStorage under factdash.account; the sign-in itself is an HttpOnly cookie), in the Claude artifact's private per-viewer store, and in CSV files. The site client reuses the artifact's per-player merge, so the newest copy of a player wins. Keep old saves loading. Everything read back goes through Core.cleanPlayer and Core.cleanWords, and every value written into HTML is escaped.
 - Bump CACHE in site/fact-dash/sw.js whenever a file in site/fact-dash/ changes. site/sw.js is different: it only removes the offline copy from when Fact Dash was the whole site, so leave it alone.
 - site/fact-dash/index.html must keep its page, head and body comment markers; build-artifact.mjs uses them.

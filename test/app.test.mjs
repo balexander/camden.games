@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';import {spawn} from 'node:child_process';import {once} from 'node:events';
 const read=f=>readFileSync(new URL('../site/fact-dash/'+f,import.meta.url),'utf8'),ctx={crypto:globalThis.crypto,TextEncoder};
-vm.runInNewContext(read('words.js')+read('core.js'),ctx);const C=ctx.Core,WORDS=ctx.WORDS,HOUR=36e5;
+vm.runInNewContext(read('../shared/srs.js')+read('words.js')+read('core.js'),ctx);const C=ctx.Core,WORDS=ctx.WORDS,SRS=ctx.SRS;
 
 test('fact decks cover the requested ranges with correct answers',()=>{
  const add=C.facts('add',false),sub=C.facts('sub',false),mul=C.facts('mul',false),div=C.facts('div',false);
@@ -34,43 +34,9 @@ test('every card has a mnemonic whose hint hides the answer where possible and w
  assert.equal(C.mnemonic(f('sub:13-5')).tag,'Hop to 10');assert.equal(C.mnemonic(f('mul:7x8')).tag,'Silly picture');assert.equal(C.mnemonic(f('div:56/7')).tag,'Flip it');
 });
 
-test('grading moves cards through the boxes',()=>{
- const f=C.facts('mul',false).find(x=>x.key==='mul:6x7'),now=1e12;
- let c=C.grade(undefined,f,true,2000,now);assert.equal(c.b,3);assert.equal(c.d,now+C.INTERVALS[3]);
- assert.equal(C.grade(undefined,f,true,9000,now).b,2);
- assert.equal(C.grade(undefined,f,true,7000,now,true,1500).b,3,'spoken answers get extra time');
- c=C.grade(undefined,f,false,2000,now);assert.equal(c.b,1);assert.equal(c.d,now);
- c=C.grade(c,f,true,9000,now);assert.equal(c.b,2);assert.equal(c.d,now+8*HOUR);
- assert.equal(C.grade(c,f,true,9000,now+9*HOUR).b,2,'slow answers do not promote');
- const solid={b:4,d:now+C.DAY,n:5,c:5,ms:2000};
- assert.equal(C.grade(solid,f,true,1000,now,false).d,solid.d,'early review leaves the schedule alone');
- assert.equal(C.grade(solid,f,false,1000,now,false).b,1);
- assert.equal(C.grade({b:6,d:0,n:9,c:9,ms:1},f,true,1000,now).b,6);
-});
-
-test('the picker prefers due cards, limits new facts, and avoids immediate repeats',()=>{
- const dk=C.facts('add',false),now=1e12,first=()=>0;
- assert.equal(C.pickNext({},dk,{recent:[]},now,first).fact.key,dk[0].key);
- const cards={[dk[10].key]:{b:2,d:now-1,n:2,c:1},[dk[11].key]:{b:1,d:now-1,n:1,c:0}};
- let p=C.pickNext(cards,dk,{recent:[]},now,first);assert.equal(p.fact.key,dk[11].key);assert.equal(p.due,true);
- assert.equal(C.pickNext(cards,dk,{recent:[dk[11].key]},now,first).fact.key,dk[10].key);
- const shaky=Object.fromEntries(dk.slice(0,5).map(f=>[f.key,{b:1,d:now,n:1,c:0}]));
- p=C.pickNext(shaky,dk,{recent:dk.slice(0,3).map(f=>f.key)},now,first);assert.ok(!p.isNew,'no new facts while five are shaky');
- const later=Object.fromEntries(dk.slice(0,3).map(f=>[f.key,{b:3,d:now+C.DAY,n:1,c:1}]));
- assert.equal(C.pickNext(later,dk,{recent:[],newHard:6},now,first).due,false);
- assert.equal(C.pickNext(later,dk,{recent:[]},now,first).isNew,true);
- // new cards come from anywhere in the deck by default, and from the easy end only when asked
- const last=()=>.999,spread=new Set();for(let i=0;i<40;i++)spread.add(C.pickNext({},dk,{recent:[]},now,()=>i/40).fact.rank);
- assert.equal(C.pickNext({},dk,{recent:[]},now,last).fact.key,dk.at(-1).key);assert.ok(spread.size>=6,'first cards span many kinds of fact');
- assert.equal(C.pickNext({},dk,{recent:[],order:'easy'},now,last).fact.key,dk[1].key);
- const sameBox=Object.fromEntries(dk.slice(0,8).map((f,i)=>[f.key,{b:i<2?1:3,d:now-i,n:1,c:1}]));
- for(const r of [first,last,()=>.5])assert.equal(sameBox[C.pickNext(sameBox,dk,{recent:[]},now,r).fact.key].b,1,'missed cards still come back before solid ones');
-});
-
-test('mix, mastery, streaks and levels',()=>{
+test('mix, streaks and levels',()=>{
  assert.ok(C.deck('mix',{},{}).every(f=>f.op==='add'));
  assert.deepEqual([...new Set(C.deck('mix',{},{'mul:2x3':{n:1}}).map(f=>f.op))],['mul']);
- assert.deepEqual({...C.mastery({'mul:1x1':{n:1,b:4},'mul:1x2':{n:1,b:2}},C.facts('mul',false))},{strong:1,learning:1,total:55});
  const now=new Date(2026,10,10,12).getTime(),k=d=>C.dayKey(now-d*C.DAY);
  assert.equal(C.dayStreak({[k(0)]:1,[k(1)]:2,[k(3)]:1},now),2);assert.equal(C.dayStreak({[k(1)]:2},now),1);assert.equal(C.dayStreak({},now),0);
  assert.equal(C.level(0).name,'Rookie');assert.equal(C.level(40).n,2);assert.equal(C.level(9999).next,null);
@@ -86,7 +52,7 @@ test('vocabulary decks are complete and every cue hides the meaning',()=>{
  }
  const v1=C.items('v1'),f=v1[2];assert.equal(f.key,'w:fragile');assert.equal(f.ans,'easy to break');
  assert.deepEqual({...C.mnemonic(f)},{tag:'Sound-alike',hint:'Sounds like "fridge aisle".',reveal:f.pic});assert.equal(C.mnemonic(v1.find(x=>x.w==='predict')).tag,'Word parts');
- assert.equal(C.fastMs(f),8000);assert.equal(C.grade(undefined,f,true,7500,1e12).b,3);
+ assert.equal(C.fastMs(f),8000);assert.equal(C.fastMs(C.facts('mul',false).find(x=>x.key==='mul:6x7')),6000);assert.equal(C.fastMs(C.facts('add',false)[0]),5000);
 });
 
 test('own words, word mixes and multiple choice',()=>{
@@ -98,17 +64,16 @@ test('own words, word mixes and multiple choice',()=>{
  for(const f of [...C.items('v2'),...mine]){const ch=C.choices(f,[...C.items('v2'),...mine]);assert.equal(ch.length,3);assert.equal(new Set(ch).size,3);assert.ok(ch.includes(f.def));}
  const adj=C.items('v1')[0],defs=Object.fromEntries(C.items('v1').map(f=>[f.def,f.pos]));
  assert.ok(C.choices(adj,C.items('v1')).every(d=>defs[d]==='adj'),'wrong choices are the same kind of word');
- assert.equal(C.pickNext({},mine,{recent:[]},1e12,()=>0).fact.key,'my:a1');
 });
 
 test('the installable app shell is complete and serves only its own files',async t=>{
  const html=read('index.html'),sw=read('sw.js'),man=JSON.parse(read('manifest.webmanifest'));
  assert.equal(man.display,'standalone');for(const i of man.icons)assert.ok(readFileSync(new URL('../site/fact-dash/'+i.src,import.meta.url)).length>500);
- for(const f of ['manifest.webmanifest','icons/apple-touch-icon.png','words.js','core.js'])assert.ok(html.includes(`"${f}"`),f);
+ for(const f of ['manifest.webmanifest','icons/apple-touch-icon.png','../shared/srs.js','words.js','core.js'])assert.ok(html.includes(`"${f}"`),f);
  for(const f of sw.match(/const SHELL=\[(.*?)\]/)[1].replace(/'/g,'').split(',').filter(f=>f!=='./'))assert.ok(readFileSync(new URL('../site/fact-dash/'+f,import.meta.url)).length>0,f);
  const port=14318,origin=`http://127.0.0.1:${port}`,child=spawn(process.execPath,['serve.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,DASH_PORT:String(port)},stdio:['ignore','pipe','pipe']});t.after(()=>child.kill());
  await once(child.stdout,'data');
- for(const [p,type] of [['/','text/html'],['/sw.js','text/javascript'],['/fact-dash/','text/html'],['/fact-dash/core.js','text/javascript'],['/fact-dash/sw.js','text/javascript'],['/fact-dash/manifest.webmanifest','application/manifest+json'],['/fact-dash/icons/icon-192.png','image/png']]){const r=await fetch(origin+p);assert.equal(r.status,200,p);assert.ok(r.headers.get('content-type').startsWith(type),p);}
+ for(const [p,type] of [['/','text/html'],['/sw.js','text/javascript'],['/fact-dash/','text/html'],['/shared/srs.js','text/javascript'],['/fact-dash/core.js','text/javascript'],['/fact-dash/sw.js','text/javascript'],['/fact-dash/manifest.webmanifest','application/manifest+json'],['/fact-dash/icons/icon-192.png','image/png']]){const r=await fetch(origin+p);assert.equal(r.status,200,p);assert.ok(r.headers.get('content-type').startsWith(type),p);}
  assert.ok((await (await fetch(origin+'/')).text()).includes('href="fact-dash/"'),'the home page links to the game');
  for(const p of ['/serve.mjs','/../serve.mjs','/%2e%2e/package.json','/fact-dash/icons/../../../serve.mjs','/fact-dash/%2e%2e/%2e%2e/package.json','/test/app.test.mjs','/core.js'])assert.equal((await fetch(origin+p)).status,404,p);
 });
@@ -126,11 +91,13 @@ test('saved data survives a CSV file round trip and bad data is cleaned on the w
  const back=C.fromCSV(csv),plain=v=>JSON.parse(JSON.stringify(v));
  assert.deepEqual(plain(back.players),plain(db.players.map(C.cleanPlayer)));assert.deepEqual(plain(back.words),plain(db.words));
  assert.deepEqual(plain(C.fromCSV('﻿'+csv.replace(/\r\n/g,'\n')).players),plain(back.players),'spreadsheet line endings and byte-order mark are fine');
+ const cardRow=lines.find(l=>l.startsWith('card,a1,')&&l.includes('mul:6x7'));assert.ok(cardRow.includes(',4,3,2100,'),'a card row shows times seen, times right and speed for a spreadsheet');
+ const oldFile=lines.map(l=>l.startsWith('card,')?l.replace(/,"?\{.*$/,','):l).join('\r\n');assert.deepEqual(plain(C.fromCSV(oldFile).players),plain(back.players),'files saved before the scheduler was separate still load');
  for(const bad of ['','hello','name,score\nSam,3',lines[0]])assert.throws(()=>C.fromCSV(bad));
  // cleaning: defaults filled, old "no clock" saves become practice, junk dropped
  const old=C.cleanPlayer({id:'x',name:' Sam ',set:{secs:0,hints:'loud'},cards:{'add:1+1':{b:99,n:'3'},junk:null},rounds:[{mode:'nope'},{mode:'add',t:5,right:'4'}],stars:'<b>',av:'<img src=x>'});
  assert.deepEqual(plain(old.set),{secs:60,hints:'always',stretch:false,sound:true,answer:'coach',peek:true,round:'practice',order:'random',range:'all'});
- assert.equal(old.name,'Sam');assert.equal(old.stars,0);assert.equal(old.av.length,4);assert.equal(old.cards['add:1+1'].b,C.MAXBOX);assert.equal(old.cards['add:1+1'].n,3);assert.equal(old.cards.junk,undefined);
+ assert.equal(old.name,'Sam');assert.equal(old.stars,0);assert.equal(old.av.length,4);assert.equal(SRS.view(old.cards['add:1+1']).seen,3,'cards are cleaned by the scheduler');assert.equal(old.cards.junk,undefined);
  assert.deepEqual(plain(old.rounds),[{t:5,mode:'add',secs:0,score:4,right:4,wrong:0,range:'all'}]);
  for(const bad of [null,{},{id:'ok'},{id:'has space',name:'A'},{id:'x',name:'  '},{id:'../x',name:'A'}])assert.equal(C.cleanPlayer(bad),null);
  assert.equal(C.cleanPlayer({id:'x',name:'A',rounds:[{mode:'constructor'}]}).rounds.length,0);

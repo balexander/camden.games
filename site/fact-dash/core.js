@@ -1,9 +1,8 @@
-// Pure game logic: math facts, vocabulary cards, mnemonics, spaced repetition. No DOM, so test/dash.test.mjs can run it.
-// Loaded as a classic script after words.js (which defines WORDS) so the app also works opened straight from a file.
+// Fact Dash's logic away from the page: math facts, vocabulary cards, mnemonics, saved data. No DOM, so test/app.test.mjs can run it.
+// Which card comes next, and what an answer does to a card, is the site's scheduler (../shared/srs.js, global SRS); this file never looks inside a card.
+// Loaded as a classic script after srs.js and words.js (which defines WORDS) so the app also works opened straight from a file.
 var Core=(()=>{
-const HOUR=36e5,DAY=864e5;
-// Leitner boxes. Box 1 comes back within the round; a fact is "strong" from box 4.
-const INTERVALS=[0,0,8*HOUR,2*DAY,5*DAY,12*DAY,30*DAY],MAXBOX=6,STRONG=4;
+const DAY=864e5;
 const OPS={add:{sym:'+',name:'Add'},sub:{sym:'−',name:'Subtract'},mul:{sym:'×',name:'Multiply'},div:{sym:'÷',name:'Divide'}};
 
 function addRank(s,b){const sum=s+b;
@@ -42,7 +41,7 @@ function items(mode,opts={}){
 // A mix only uses decks the player has already started, so it never springs division on a beginner.
 function deck(mode,opts={},cards={}){
   const of=MODES[mode].of;if(!of)return items(mode,opts);
-  let on=of.filter(m=>items(m,opts).some(f=>cards[f.key]?.n));if(!on.length)on=[of[0]];
+  let on=of.filter(m=>items(m,opts).some(f=>SRS.view(cards[f.key]).seen));if(!on.length)on=[of[0]];
   return on.flatMap(m=>items(m,opts)).sort((x,y)=>x.rank-y.rank||x.size-y.size);
 }
 // Three meanings to pick from when the player answers alone: the right one plus two from the same kind of word.
@@ -116,35 +115,8 @@ function mnemonic(f){
   return m('Flip it',`Think times: ${d} × ? = ${c}.`,`${st?st[1]+' ':''}${d} × ${ans} = ${c}, so ${eq}.`);
 }
 
-// A meaning takes longer to say than a number.
+// How long counts as a quick answer. A meaning takes longer to say than a number.
 const fastMs=f=>f.kind==='vocab'?8000:String(f.ans).length>1?6000:5000;
-// Returns the updated card. `due` is false for extra practice of a card that was not due yet.
-function grade(card,f,ok,ms,now,due=true,slack=0){
-  const c=card?{...card}:{b:0,d:0,n:0,c:0,ms:0},isNew=!c.n;c.n++;c.l=now;
-  if(!ok){c.b=1;c.d=now;return c;}
-  c.c++;c.ms=c.ms?Math.round(c.ms*.6+ms*.4):Math.round(ms);
-  const fast=ms<=fastMs(f)+slack;
-  if(isNew)c.b=fast?3:2;                       // already known: skip the beginner boxes
-  else if(due||c.b<=2){if(fast||c.b<=1)c.b=Math.min(MAXBOX,c.b+1);}   // slow but right: stay put
-  else return c;                               // early review of a solid card: schedule untouched
-  c.d=now+INTERVALS[c.b];return c;
-}
-// Order: cards that are due (weakest box first), then a new card if few are shaky, then extra practice.
-// New cards come in random order unless sess.order is 'easy', which introduces the easiest first.
-function pickNext(cards,dk,sess,now,rnd=Math.random){
-  const recent=sess.recent||[],avail=dk.filter(f=>!recent.includes(f.key)),pool=avail.length?avail:dk;
-  const seen=pool.filter(f=>cards[f.key]?.n),by=(x,y)=>cards[x.key].b-cards[y.key].b||cards[x.key].d-cards[y.key].d;
-  const from=(list,n)=>list[Math.floor(rnd()*Math.min(n,list.length))],easy=sess.order==='easy',any=list=>from(list,easy?2:list.length);
-  const due=seen.filter(f=>cards[f.key].d<=now).sort(by);
-  if(due.length)return {fact:easy?from(due,3):any(due.filter(f=>cards[f.key].b===cards[due[0].key].b)),due:true,isNew:false};
-  const shaky=dk.filter(f=>cards[f.key]?.n&&cards[f.key].b<=1).length,unseen=pool.filter(f=>!cards[f.key]?.n);
-  if(unseen.length&&shaky<5&&(sess.newHard||0)<6)return {fact:any(unseen),due:true,isNew:true};
-  const rest=seen.sort(by);
-  if(rest.length)return {fact:from(rest,4),due:false,isNew:false};
-  if(unseen.length)return {fact:any(unseen),due:true,isNew:true};
-  return {fact:from(pool,pool.length),due:false,isNew:false};
-}
-function mastery(cards,dk){let strong=0,learning=0;for(const f of dk){const c=cards[f.key];if(c?.n){if(c.b>=STRONG)strong++;else learning++;}}return {strong,learning,total:dk.length};}
 const dayKey=ts=>{const d=new Date(ts);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 function dayStreak(days,now){let n=0,t=now;if(!days[dayKey(t)])t-=DAY;while(days[dayKey(t)]){n++;t-=DAY;}return n;}
 const LEVELS=[[0,'Rookie'],[40,'Counter'],[120,'Hopper'],[250,'Sprinter'],[500,'Ace'],[900,'Whiz'],[1500,'Champ'],[2500,'Legend']];
@@ -160,7 +132,7 @@ function cleanPlayer(p){
   if(!p||typeof p!=='object'||!ID.test(String(p.id))||typeof p.name!=='string'||!p.name.trim())return null;
   const raw=obj(p.set),set={};for(const [k,list] of Object.entries(SETTINGS))set[k]=list.includes(raw[k])?raw[k]:list[0];
   if(raw.secs===0&&!raw.round)set.round='practice';   // older saves stored "no clock" as 0 seconds
-  const cards={};for(const [k,c] of Object.entries(obj(p.cards)))if(c&&typeof c==='object')cards[String(k).slice(0,60)]={b:Math.max(0,Math.min(MAXBOX,num(c.b))),d:num(c.d),n:num(c.n),c:num(c.c),ms:num(c.ms),l:num(c.l)};
+  const cards={};for(const [k,c] of Object.entries(obj(p.cards))){const card=SRS.clean(c);if(card)cards[String(k).slice(0,60)]=card;}
   const best={};for(const [k,v] of Object.entries(obj(p.best)))best[String(k).slice(0,20)]=num(v);
   const days={};for(const [k,v] of Object.entries(obj(p.days)))if(/^\d{4}-\d\d-\d\d$/.test(k))days[k]=num(v);
   const rounds=(Array.isArray(p.rounds)?p.rounds:[]).filter(r=>r&&Object.hasOwn(MODES,r.mode)).map(r=>({t:num(r.t),mode:r.mode,secs:num(r.secs),score:num(r.score??r.right),right:num(r.right),wrong:num(r.wrong),range:r.range==='low'||r.range==='high'?r.range:'all'})).slice(-400);
@@ -171,6 +143,7 @@ function cleanWords(list){
   return (Array.isArray(list)?list:[]).map(w=>w&&ID.test(String(w.id))&&{id:String(w.id),w:str(w.w,30),def:str(w.def,80),hook:str(w.hook,140)}).filter(w=>w&&w.w&&w.def&&!seen.has(w.id)&&seen.add(w.id)).slice(0,300);
 }
 // One CSV holds everything. The "record" column says what a row is: a player, one round played, one card's progress, or one of the grown-up's own words.
+// A card row has readable columns for a spreadsheet, and the scheduler's own copy of the card in details, which is what gets loaded back.
 const COLS=['record','player_id','player','key','when','mode','seconds','right','wrong','box','due','seen','correct','avg_ms','details'];
 const iso=t=>t>0?new Date(t).toISOString():'',cell=v=>{v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
 function toCSV(data){
@@ -179,7 +152,7 @@ function toCSV(data){
     const who={player_id:p.id,player:p.name};
     row({record:'player',...who,when:iso(p.created),details:JSON.stringify({av:p.av,subject:p.subject,updated:p.updated,stars:p.stars,set:p.set,best:p.best,days:p.days})});
     for(const r of p.rounds)row({record:'round',...who,key:r.range==='all'?'':r.range,when:iso(r.t),mode:r.mode,seconds:r.secs,right:r.right,wrong:r.wrong});
-    for(const [k,c] of Object.entries(p.cards))row({record:'card',...who,key:k,when:iso(c.l),box:c.b,due:iso(c.d),seen:c.n,correct:c.c,avg_ms:c.ms});
+    for(const [k,c] of Object.entries(p.cards)){const v=SRS.view(c);row({record:'card',...who,key:k,when:iso(v.last),box:v.strength,due:iso(v.due),seen:v.seen,correct:v.correct,avg_ms:v.avgMs,details:JSON.stringify(c)});}
   }
   for(const w of cleanWords(data.words))row({record:'word',key:w.id,details:JSON.stringify({w:w.w,def:w.def,hook:w.hook})});
   return rows.map(r=>r.map(cell).join(',')).join('\r\n')+'\r\n';
@@ -204,7 +177,7 @@ function fromCSV(text){
     if(!ID.test(f('player_id')))continue;const p=get(f('player_id'));p.name=p.name||f('player');
     if(f('record')==='player')Object.assign(p,json(f('details')),{id:p.id,name:f('player'),created:time(f('when'))});
     else if(f('record')==='round')p.rounds.push({t:time(f('when')),mode:f('mode'),secs:+f('seconds'),right:+f('right'),wrong:+f('wrong'),range:f('key')});
-    else if(f('record')==='card'&&f('key'))p.cards[f('key')]={b:+f('box'),d:time(f('due')),n:+f('seen'),c:+f('correct'),ms:+f('avg_ms'),l:time(f('when'))};}
+    else if(f('record')==='card'&&f('key'))p.cards[f('key')]=f('details')?json(f('details')):{b:+f('box'),d:time(f('due')),n:+f('seen'),c:+f('correct'),ms:+f('avg_ms'),l:time(f('when'))};}   // files from before the scheduler was separate have no details
   const out={players:[...players.values()].map(cleanPlayer).filter(Boolean),words:cleanWords(words)};
   if(!out.players.length&&!out.words.length)throw Error('no saved data in this file');
   return out;
@@ -217,5 +190,5 @@ async function passKey(name,password){
   const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:e.encode('factdash:'+name),iterations:300000},k,256);
   return [...new Uint8Array(bits)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
-return {OPS,MODES,INTERVALS,MAXBOX,STRONG,DAY,SETTINGS,cleanPlayer,cleanWords,toCSV,fromCSV,cleanLogin,passKey,facts,items,deck,choices,mnemonic,grade,pickNext,mastery,dayKey,dayStreak,level,fastMs};
+return {OPS,MODES,DAY,SETTINGS,cleanPlayer,cleanWords,toCSV,fromCSV,cleanLogin,passKey,facts,items,deck,choices,mnemonic,dayKey,dayStreak,level,fastMs};
 })();

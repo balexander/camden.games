@@ -172,6 +172,7 @@ svg text{font:700 11px var(--body);fill:var(--soft)}
 <body>
 <!--body-->
 <main id="app"></main>
+<script src="../shared/srs.js"></script>
 <script src="words.js"></script>
 <script src="core.js"></script>
 <script>
@@ -333,7 +334,7 @@ function whoView(){
 function homeView(p){
   const now=Date.now(),today=p.days[Core.dayKey(now)]||0,lv=Core.level(p.stars),streak=Core.dayStreak(p.days,now),secs=secsOf(p),o=opts(p);
   const tiles=TILES[p.subject].map(m=>{
-    const md=M[m],dk=md.of?md.of.flatMap(x=>Core.items(x,o)):Core.items(m,o),ms=Core.mastery(p.cards,dk),best=p.best[bestKey(p,m)];
+    const md=M[m],dk=md.of?md.of.flatMap(x=>Core.items(x,o)):Core.items(m,o),ms=SRS.mastery(p.cards,dk),best=p.best[bestKey(p,m)];
     if(m==='mine'&&!dk.length)return `<button class="sheet mode" data-act="go" data-v="words"><span class="sym">${md.sym}</span><h3>${md.name}</h3><span class="small soft">Add this week's school words</span></button>`;
     const bar=`<div class="bar" role="img" aria-label="${ms.strong} strong, ${ms.learning} learning, ${ms.total} cards"><b style="width:${ms.strong/ms.total*100}%"></b><u style="width:${ms.learning/ms.total*100}%"></u></div>`;
     return md.of?`<button class="sheet mode wide" data-act="start" data-v="${m}"><span class="sym">${md.sym}</span><span class="col grow" style="gap:4px"><h3>${md.name}</h3><span class="small soft">Everything you have practiced${best!=null?` · best ${best}`:''}</span></span></button>`
@@ -351,7 +352,7 @@ function homeView(p){
 function playView(p){
   if(G.count)return `<div class="count" aria-live="polite">${G.count}</div>`;
   const c=G.cur,f=c.fact,m=c.mn,coach=p.set.answer==='coach',word=f.kind==='vocab',mode=p.set.hints;
-  const showHint=c.phase!=='ask'||c.hintOpen||mode==='always'||(mode==='fade'&&c.wasBox<3);
+  const showHint=c.phase!=='ask'||c.hintOpen||mode==='always'||(mode==='fade'&&c.wasLevel<3);
   const trick=text=>text?`${m.tag?`<span class="tag">${m.tag}</span>`:''}<p class="hint">${esc(text)}</p>`:'';
   let face,help;
   if(word){
@@ -387,20 +388,20 @@ function doneView(p){
     <div class="row"><button class="btn" data-act="start" data-v="${G.mode}">Dash again</button><button class="btn ghost" data-act="go" data-v="home">Home</button><button class="btn ghost" data-act="csvSave">Save CSV</button></div>
     <p class="small soft" id="csvMsg" aria-live="polite">${esc(ui.msg||statusText(true))}</p>`;
 }
-const boxClass=b=>!b?'':b<=2?'b'+b:b===3?'b3':'b4';
-function dueText(c,now){if(!c?.n)return 'Not seen yet';if(c.d<=now)return 'Ready to practice now';const h=(c.d-now)/36e5;return h<24?`Comes back in ${Math.max(1,Math.round(h))} h`:`Comes back in ${Math.round(h/24)} days`;}
+const boxClass=card=>{const l=SRS.view(card).level;return l?'b'+l:'';};
+function dueText(card,now){const c=SRS.view(card);if(!c.seen)return 'Not seen yet';if(c.due<=now)return 'Ready to practice now';const h=(c.due-now)/36e5;return h<24?`Comes back in ${Math.max(1,Math.round(h))} h`:`Comes back in ${Math.round(h/24)} days`;}
 function statsView(p){
   const now=Date.now(),tabs=['add','sub','mul','div','v1','v2','v3',...(db.words.length?['mine']:[])],op=tabs.includes(ui.tab)?ui.tab:'add',words=M[op].subject==='words';
   const dk=Core.items(op,{...opts(p),range:'all'}),right=p.rounds.reduce((s,r)=>s+r.right,0),tries=p.rounds.reduce((s,r)=>s+r.right+r.wrong,0);
-  const cell=(f,text)=>f?`<td><button class="${boxClass(p.cards[f.key]?.b)}" data-act="cell" data-v="${f.key}" aria-pressed="${ui.cell===f.key}" aria-label="${f.a} ${Core.OPS[op].sym} ${f.b}">${text??''}</button></td>`:'<td></td>';
+  const cell=(f,text)=>f?`<td><button class="${boxClass(p.cards[f.key])}" data-act="cell" data-v="${f.key}" aria-pressed="${ui.cell===f.key}" aria-label="${f.a} ${Core.OPS[op].sym} ${f.b}">${text??''}</button></td>`:'<td></td>';
   const byKey=Object.fromEntries(dk.map(f=>[f.key,f]));let grid='';
-  if(words)grid=`<div class="chips">${dk.map(f=>`<button class="${boxClass(p.cards[f.key]?.b)}" data-act="cell" data-v="${esc(f.key)}" aria-pressed="${ui.cell===f.key}">${esc(f.w)}</button>`).join('')}</div>`;
+  if(words)grid=`<div class="chips">${dk.map(f=>`<button class="${boxClass(p.cards[f.key])}" data-act="cell" data-v="${esc(f.key)}" aria-pressed="${ui.cell===f.key}">${esc(f.w)}</button>`).join('')}</div>`;
   else if(op==='mul'||op==='div'){grid=`<table class="heat wide"><tr><th>${Core.OPS[op].sym}</th>${[1,2,3,4,5,6,7,8,9,10].map(n=>`<th>${n}</th>`).join('')}</tr>`;
     for(let a=1;a<=10;a++){grid+=`<tr><th>${a}</th>`;for(let b=1;b<=10;b++)grid+=cell(op==='mul'?byKey[`mul:${Math.min(a,b)}x${Math.max(a,b)}`]:byKey[`div:${a*b}/${a}`],a*b);grid+='</tr>';}grid+='</table>';}
   else{const max=p.set.stretch?20:19;grid=`<table class="heat"><tr><th>${Core.OPS[op].sym}</th>${Array.from({length:max},(_,i)=>`<th>${i+1}</th>`).join('')}</tr>`;
     for(let a=1;a<=max;a++){grid+=`<tr><th>${a}</th>`;for(let b=1;b<=max;b++)grid+=cell(op==='add'?byKey[`add:${Math.min(a,b)}+${Math.max(a,b)}`]:byKey[`sub:${a+b}-${a}`]);grid+='</tr>';}grid+='</table>';}
-  const sel=byKey[ui.cell],sc=sel&&p.cards[sel.key],trick=sel&&Core.mnemonic(sel).reveal;
-  const detail=sel?`<p><b>${label(sel)}</b>${words?`: ${esc(sel.def)}`:''} · ${dueText(sc,now)}${sc?.n?` · right ${sc.c} of ${sc.n}${sc.ms?` · about ${(sc.ms/1000).toFixed(1)} s`:''}`:''}${trick?`<br><span class="small soft">${esc(trick)}</span>`:''}</p>`
+  const sel=byKey[ui.cell],sc=sel&&p.cards[sel.key],sv=SRS.view(sc),trick=sel&&Core.mnemonic(sel).reveal;
+  const detail=sel?`<p><b>${label(sel)}</b>${words?`: ${esc(sel.def)}`:''} · ${dueText(sc,now)}${sv.seen?` · right ${sv.correct} of ${sv.seen}${sv.avgMs?` · about ${(sv.avgMs/1000).toFixed(1)} s`:''}`:''}${trick?`<br><span class="small soft">${esc(trick)}</span>`:''}</p>`
     :`<p class="small soft">Tap a ${words?'word':'square'} to see ${words?'its meaning':'the fact'} and its trick.${op==='sub'?' Rows are the number taken away; columns are the answer.':op==='div'?' Each square shows the number being divided by its row.':''}</p>`;
   const secs=secsOf(p),range=rangeOf(p,op),rs=p.rounds.filter(r=>r.mode===op&&r.secs===secs&&r.range===range).slice(-20);
   return `<header class="row"><button class="btn ghost" data-act="go" data-v="home">← Back</button><h2 class="grow">${esc(p.name)}'s progress</h2></header>
@@ -485,9 +486,9 @@ function start(mode){
 function next(){
   const p=me();if(!G.secs&&G.n>=CHILL)return finish();
   G.recent=G.recent.slice(-Math.min(3,G.deck.length-1));
-  const pick=Core.pickNext(p.cards,G.deck,G,Date.now()),f=pick.fact,flip=(f.op==='add'||f.op==='mul')&&Math.random()<.5;
+  const pick=SRS.pick(p.cards,G.deck,G,Date.now()),f=pick.fact,flip=(f.op==='add'||f.op==='mul')&&Math.random()<.5;
   G.recent=[...G.recent,f.key].slice(-3);G.skipped=false;
-  G.cur={fact:f,due:pick.due,isNew:pick.isNew,x:flip?f.b:f.a,y:flip?f.a:f.b,typed:'',phase:'ask',t0:performance.now(),mn:Core.mnemonic(f),wasBox:p.cards[f.key]?.b||0,hintOpen:false,
+  G.cur={fact:f,due:pick.due,isNew:pick.isNew,x:flip?f.b:f.a,y:flip?f.a:f.b,typed:'',phase:'ask',t0:performance.now(),mn:Core.mnemonic(f),wasLevel:SRS.view(p.cards[f.key]).level,hintOpen:false,
     choices:f.kind==='vocab'&&p.set.answer!=='coach'?Core.choices(f,[...G.deck,...Core.items('v1'),...Core.items('v2')]):null};
   render();
 }
@@ -499,10 +500,10 @@ function runClock(){
     if(G.left<=0)finish();},100);
 }
 function answer(ok){
-  const p=me(),c=G.cur,f=c.fact,ms=performance.now()-c.t0,before=p.cards[f.key]?.b||0,slack=p.set.answer==='coach'?SPOKEN:0;
-  p.cards[f.key]=Core.grade(p.cards[f.key],f,ok,ms,Date.now(),c.due,slack);
+  const p=me(),c=G.cur,f=c.fact,ms=performance.now()-c.t0,before=SRS.view(p.cards[f.key]).strength,slack=p.set.answer==='coach'?SPOKEN:0;
+  p.cards[f.key]=SRS.review(p.cards[f.key],{ok,ms,fastMs:Core.fastMs(f)+slack,due:c.due},Date.now());
   if(c.isNew&&(!ok||ms>Core.fastMs(f)+slack))G.newHard++;
-  if(p.cards[f.key].b>before&&!c.isNew||c.isNew&&ok)G.up++;
+  if(SRS.view(p.cards[f.key]).strength>before&&!c.isNew||c.isNew&&ok)G.up++;
   G.log.push({fact:f,ok,ms});G.n++;
   if(ok){G.right++;G.streak++;G.bestStreak=Math.max(G.bestStreak,G.streak);G.stars+=1+(G.streak%5===0?1:0);c.phase='good';beep([[660,.08],[880,.12]]);render();setTimeout(()=>{if(view==='play'&&G&&G.cur===c)next();},p.set.hints==='off'?350:f.kind==='vocab'?900:650);}
   else{G.wrong++;G.streak=0;c.phase='fix';c.typed='';beep([[220,.2]]);render();}
