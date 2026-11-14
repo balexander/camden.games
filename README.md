@@ -1,10 +1,22 @@
-# Fact Dash
+# camden.games
+
+A small site of kids' games at https://camden.games. Each game is a folder of plain files under `site/`, and the home page (`site/index.html`) has one tile for each. One Cloudflare Worker serves the site and gives it a single sign-in: the same name and password works in every game, and each game keeps its own saved data under that account.
+
+There is one game so far, Fact Dash.
+
+## Adding a game
+
+1. Put the game in its own folder under `site/`, for example `site/word-hunt/`.
+2. Add a tile for it to `site/index.html`.
+3. If it saves data online, add its folder name to `GAMES` in `worker/index.js`. It then reads and writes at `/api/data/<folder name>`, and signs in through `/api/signup`, `/api/login` and `/api/logout` like Fact Dash does.
+
+## Fact Dash
 
 Quick flash-card rounds for math facts and vocabulary, built for an 8-year-old and the grown-up sitting next to him. He says the answer, the grown-up taps Yes or No, and the app decides which card comes next.
 
-It is a plain static site with no build step, plus a small Cloudflare Worker that keeps each family's players online under a name and password.
+It is plain files with no build step. The site's Worker keeps each family's players online under a name and password.
 
-## What it does
+### What it does
 
 - **Math:** adding and subtracting within 20 (switchable between numbers up to 10, 11 to 20, or all) and multiplying and dividing to 10. Every card shows a number strategy and a dot picture.
 - **Words:** 120 built-in vocabulary words in three levels, each with a sound-alike picture or its real word parts, plus a sentence. Grown-ups can add their own word lists.
@@ -21,36 +33,29 @@ npm run dev      # http://127.0.0.1:4319 with the Worker, so signing in works lo
 npm test
 ```
 
-Opening `app/index.html` straight from the file system also works, without the online account.
+`npm start` serves the site without accounts. Opening `site/fact-dash/index.html` straight from the file system also works.
 
 ## Online accounts
 
-`npx wrangler deploy` puts the app and its Worker on Cloudflare. Nothing else needs setting up: the database is a SQLite Durable Object declared in `wrangler.jsonc`, and it fits the free plan.
+`npx wrangler deploy` puts the site and its Worker on Cloudflare. The database is a SQLite Durable Object declared in `wrangler.jsonc`, and it fits the free plan. The Worker is still named `fact-dash` in Cloudflare, because every account's saved data belongs to the Worker of that name; do not rename it in `wrangler.jsonc`. The camden.games domain is attached to it in the Cloudflare dashboard.
 
 - Anyone who opens the site can create an account. To stop new accounts once yours exists, add a variable named `SIGNUP` with the value `closed` to the Worker.
 - The browser stretches the password into a key and sends only that. The Worker stores a hash of the key and a hash of each device's sign-in cookie, never the password.
 - A device stays signed in for 400 days after it was last used. Ten wrong passwords in a row block new sign-ins to that account for 15 minutes.
 - There is no password reset. If the password is lost, a device that is still signed in keeps working, and a CSV file saved from it can be loaded into a new account.
 
-## Put it on an iPhone
+### Put it on an iPhone
 
 Fact Dash is a home-screen web app, not an App Store app.
 
-1. Host the `app/` folder at an HTTPS address (see below).
-2. Open that address in Safari on the phone.
-3. Tap Share, then Add to Home Screen.
+1. Open https://camden.games/fact-dash/ in Safari on the phone.
+2. Tap Share, then Add to Home Screen.
 
 It then opens full screen from its own icon and works without a connection.
 
-Hosting options:
-
-- **Cloudflare Workers (recommended):** `npx wrangler deploy`. This is the only option with online accounts.
-- **GitHub Pages:** set Settings > Pages > Source to "GitHub Actions", then run the "Deploy Fact Dash" workflow from the Actions tab. Pages on a private repository needs a paid GitHub plan, and the published site is public either way.
-- **Any static host:** drag the `app/` folder onto Netlify Drop or similar. Progress then stays on each device.
-
 For the App Store later, the same folder can be wrapped with Capacitor on a Mac with Xcode and an Apple Developer account.
 
-## Play it inside Claude
+### Play it inside Claude
 
 `npm run artifact` writes `dist/fact-dash.html`, a single-file copy for publishing as a Claude artifact. Published with the `db`, `user` and `downloads` capabilities, that copy also keeps each viewer's players in the artifact's private per-viewer store, so progress survives a cleared browser.
 
@@ -58,18 +63,20 @@ For the App Store later, the same folder can be wrapped with Capacitor on a Mac 
 
 | Path | What it is |
 | --- | --- |
-| `app/index.html` | Interface and styles |
-| `app/core.js` | Game logic with no page access: decks, memory tricks, scheduling, saved-data checks, CSV |
-| `app/words.js` | Built-in vocabulary |
-| `app/sw.js`, `app/manifest.webmanifest`, `app/icons/` | Installable-app shell and offline cache |
-| `worker/index.js`, `wrangler.jsonc` | Cloudflare Worker: serves `app/`, checks sign-ins and stores each account's players in a Durable Object |
-| `serve.mjs` | Local static server for `npm start` |
-| `build-artifact.mjs` | Builds the single-file Claude artifact copy |
+| `site/index.html` | The site's home page, with a tile for each game |
+| `site/sw.js` | Clears the offline copy left on devices from when Fact Dash was the whole site |
+| `site/fact-dash/index.html` | Fact Dash's interface and styles |
+| `site/fact-dash/core.js` | Game logic with no page access: decks, memory tricks, scheduling, saved-data checks, CSV |
+| `site/fact-dash/words.js` | Built-in vocabulary |
+| `site/fact-dash/sw.js`, `site/fact-dash/manifest.webmanifest`, `site/fact-dash/icons/` | Installable-app shell and offline cache |
+| `worker/index.js`, `wrangler.jsonc` | Cloudflare Worker: serves `site/`, checks sign-ins and stores each account's data for every game in a Durable Object |
+| `serve.mjs` | Local static server for `npm start`, without accounts |
+| `build-artifact.mjs` | Builds the single-file Claude artifact copy of Fact Dash |
 | `test/app.test.mjs` | Tests for the logic, the word list, the CSV format and the app shell |
 | `test/api.test.mjs` | Runs the Worker in `wrangler dev` and tests accounts and saving |
 
 ## Changing things
 
-- Bump `CACHE` in `app/sw.js` whenever a file in `app/` changes, or installed phones keep the old version.
-- Saved data is stored under `factdash.v1`. Keep old saves loading; everything read back passes through `Core.cleanPlayer` and `Core.cleanWords`.
+- Bump `CACHE` in `site/fact-dash/sw.js` whenever a file in `site/fact-dash/` changes, or installed phones keep the old version.
+- Fact Dash's saved data is stored under `factdash.v1`. Keep old saves loading; everything read back passes through `Core.cleanPlayer` and `Core.cleanWords`.
 - Word entries are `[word, part of speech, meaning, sentence, cue, picture]`. The cue is shown with the question, so it must not give the meaning away. The tests check this.

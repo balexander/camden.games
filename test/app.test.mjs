@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';import {spawn} from 'node:child_process';import {once} from 'node:events';
-const read=f=>readFileSync(new URL('../app/'+f,import.meta.url),'utf8'),ctx={crypto:globalThis.crypto,TextEncoder};
+const read=f=>readFileSync(new URL('../site/fact-dash/'+f,import.meta.url),'utf8'),ctx={crypto:globalThis.crypto,TextEncoder};
 vm.runInNewContext(read('words.js')+read('core.js'),ctx);const C=ctx.Core,WORDS=ctx.WORDS,HOUR=36e5;
 
 test('fact decks cover the requested ranges with correct answers',()=>{
@@ -103,13 +103,14 @@ test('own words, word mixes and multiple choice',()=>{
 
 test('the installable app shell is complete and serves only its own files',async t=>{
  const html=read('index.html'),sw=read('sw.js'),man=JSON.parse(read('manifest.webmanifest'));
- assert.equal(man.display,'standalone');for(const i of man.icons)assert.ok(readFileSync(new URL('../app/'+i.src,import.meta.url)).length>500);
+ assert.equal(man.display,'standalone');for(const i of man.icons)assert.ok(readFileSync(new URL('../site/fact-dash/'+i.src,import.meta.url)).length>500);
  for(const f of ['manifest.webmanifest','icons/apple-touch-icon.png','words.js','core.js'])assert.ok(html.includes(`"${f}"`),f);
- for(const f of sw.match(/const SHELL=\[(.*?)\]/)[1].replace(/'/g,'').split(',').filter(f=>f!=='./'))assert.ok(readFileSync(new URL('../app/'+f,import.meta.url)).length>0,f);
+ for(const f of sw.match(/const SHELL=\[(.*?)\]/)[1].replace(/'/g,'').split(',').filter(f=>f!=='./'))assert.ok(readFileSync(new URL('../site/fact-dash/'+f,import.meta.url)).length>0,f);
  const port=14318,origin=`http://127.0.0.1:${port}`,child=spawn(process.execPath,['serve.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,DASH_PORT:String(port)},stdio:['ignore','pipe','pipe']});t.after(()=>child.kill());
  await once(child.stdout,'data');
- for(const [p,type] of [['/','text/html'],['/core.js','text/javascript'],['/sw.js','text/javascript'],['/manifest.webmanifest','application/manifest+json'],['/icons/icon-192.png','image/png']]){const r=await fetch(origin+p);assert.equal(r.status,200,p);assert.ok(r.headers.get('content-type').startsWith(type),p);}
- for(const p of ['/serve.mjs','/../serve.mjs','/%2e%2e/package.json','/icons/../../serve.mjs','/test/app.test.mjs'])assert.equal((await fetch(origin+p)).status,404,p);
+ for(const [p,type] of [['/','text/html'],['/sw.js','text/javascript'],['/fact-dash/','text/html'],['/fact-dash/core.js','text/javascript'],['/fact-dash/sw.js','text/javascript'],['/fact-dash/manifest.webmanifest','application/manifest+json'],['/fact-dash/icons/icon-192.png','image/png']]){const r=await fetch(origin+p);assert.equal(r.status,200,p);assert.ok(r.headers.get('content-type').startsWith(type),p);}
+ assert.ok((await (await fetch(origin+'/')).text()).includes('href="fact-dash/"'),'the home page links to the game');
+ for(const p of ['/serve.mjs','/../serve.mjs','/%2e%2e/package.json','/fact-dash/icons/../../../serve.mjs','/fact-dash/%2e%2e/%2e%2e/package.json','/test/app.test.mjs','/core.js'])assert.equal((await fetch(origin+p)).status,404,p);
 });
 
 test('saved data survives a CSV file round trip and bad data is cleaned on the way in',()=>{

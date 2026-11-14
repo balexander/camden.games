@@ -3,7 +3,7 @@
   "name": "fact-dash",
   "main": "worker/index.js",
   "compatibility_date": "2026-11-01",
-  "assets": { "directory": "app", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  "assets": { "directory": "site", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
   "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "SyncRoom" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SyncRoom"] }]
 }

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Camden Games</title>
+<meta name="description" content="Quick games for practising math and words.">
+<link rel="icon" type="image/png" href="fact-dash/icons/icon-192.png">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111728" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@500;700&display=swap">
+<style>
+/* The home page: the same sheet of graph paper as the games, with one big tile for each game. To add a game, add its folder and a tile. */
+:root{--paper:#f3f6fb;--grid:#dbe4f2;--card:#ffffff;--ink:#1b2540;--soft:#5b6785;--line:#c9d3e6;--blue:#2457d6;--amber:#e08a00}
+@media (prefers-color-scheme: dark){:root{--paper:#111728;--grid:#1c2540;--card:#1c2440;--ink:#eef2ff;--soft:#a3aecb;--line:#34406a;--blue:#7ea2ff;--amber:#ffb84d;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);font:500 16px/1.45 "Nunito","Segoe UI",system-ui,sans-serif;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:22px 22px;
+  padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px))}
+main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1,h2{font-family:"Baloo 2","Trebuchet MS","Segoe UI",sans-serif;line-height:1.1;margin:0}
+h1{font-size:2.3rem;font-weight:800} h2{font-size:1.5rem;font-weight:800;color:var(--blue)}
+p{margin:0;color:var(--soft)}
+.game{display:flex;gap:16px;align-items:center;background:var(--card);border:2px solid var(--line);border-radius:18px;padding:16px;color:inherit;text-decoration:none}
+.game:active{transform:translateY(2px)} .game:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.game img{width:72px;height:72px;border-radius:16px;flex:none}
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Camden Games</h1><p>Pick a game.</p></header>
+  <a class="game" href="fact-dash/"><img src="fact-dash/icons/icon-192.png" alt=""><span><h2>Fact Dash</h2><p>Math and words, one quick round at a time.</p></span></a>
+</main>
+<script>
+// Clears the offline copy left from when Fact Dash was the whole site (see sw.js).
+if('serviceWorker' in navigator)navigator.serviceWorker.getRegistration('/').then(r=>{if(r&&new URL(r.scope).pathname==='/')r.update().catch(()=>{});}).catch(()=>{});
+</script>
+</body>
+</html>

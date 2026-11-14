@@ -1,8 +1,8 @@
 {
-  "name": "fact-dash",
+  "name": "camden-games",
   "private": true,
   "type": "module",
-  "description": "One-minute flash-card rounds for math facts and vocabulary, with a memory trick on every card.",
+  "description": "camden.games: a small site of kids' games. The first is Fact Dash, flash-card rounds for math facts and vocabulary.",
   "scripts": {
     "start": "node serve.mjs",
     "test": "node --test",
