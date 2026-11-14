@@ -441,8 +441,10 @@ function settingsView(p){
       <div class="row"><button class="btn ghost" data-act="csvSave">Save CSV file</button><button class="btn ghost" data-act="csvPick">Load CSV file</button><input type="file" id="csvFile" accept=".csv,text/csv" aria-label="CSV file to load" hidden></div>
       ${ui.pending?`<div class="row"><span class="grow"><b>Load this file?</b> ${esc(describe(ui.pending))} Players here with the same identity are replaced by the file's copy.</span><button class="btn" data-act="csvLoad">Load</button><button class="btn ghost" data-act="csvCancel">Cancel</button></div>`:''}
       <p class="small" id="csvMsg" aria-live="polite">${esc(ui.msg)}</p></div>
-    <div class="sheet col"><h3>Start over</h3><div class="row"><button class="btn ghost" data-act="confirm" data-v="reset">Erase ${esc(p.name)}'s progress</button><button class="btn ghost" data-act="confirm" data-v="remove">Remove ${esc(p.name)}</button></div>
-      ${ask('reset','Erase all progress?','Erase')}${ask('remove','Remove this player?','Remove')}</div>`;
+    <div class="sheet col"><h3>Players</h3>${db.players.map(q=>`<div class="row"><span class="grow">${esc(q.av||AVS[0])} <b>${esc(q.name)}</b>${q.id===p.id?' <span class="small soft">(playing now)</span>':''}<br><span class="small soft">★ ${q.stars} · ${plural(q.rounds.length,'round')}</span></span><button class="btn ghost" data-act="confirm" data-v="rm:${esc(q.id)}">Remove</button></div>
+      ${ui.confirm==='rm:'+q.id?`<div class="row"><span class="grow"><b>Remove ${esc(q.name)} (★ ${q.stars})?</b> This cannot be undone.</span><button class="btn warn" data-act="remove" data-v="${esc(q.id)}">Remove</button><button class="btn ghost" data-act="confirm" data-v="">Keep</button></div>`:''}`).join('')}</div>
+    <div class="sheet col"><h3>Start over</h3><div class="row"><button class="btn ghost" data-act="confirm" data-v="reset">Erase ${esc(p.name)}'s progress</button></div>
+      ${ask('reset','Erase all progress?','Erase')}</div>`;
 }
 // One form serves both buttons: Sign in submits it, Create account makes a new account from the same two boxes.
 const acctForm=()=>`<form class="col" id="acctForm"><label class="col" for="acctName"><span class="small soft">Name or email</span><input type="text" id="acctName" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" value="${esc(ui.acctTry||'')}"></label>
@@ -548,7 +550,7 @@ const acts={
   set:(v,el)=>{const p=me(),k=el.dataset.k;p.set[k]=k==='secs'?Number(v):k==='stretch'||k==='sound'||k==='peek'?v==='true':v;save(p);render();},
   confirm:v=>{ui.confirm=v||null;render();},
   reset:()=>{const p=me();Object.assign(p,{cards:{},rounds:[],best:{},stars:0,days:{}});save(p);ui.confirm=null;view='home';render();},
-  remove:()=>{const id=db.cur;db.gone[id]=Date.now();db.players=db.players.filter(p=>p.id!==id);db.cur=null;push(id);saveMeta();ui.confirm=null;view='who';render();},
+  remove:id=>{if(!db.players.some(p=>p.id===id))return;db.gone[id]=Date.now();db.players=db.players.filter(p=>p.id!==id);push(id);saveMeta();ui.confirm=null;if(db.cur===id){db.cur=null;view='who';}render();},
   unword:v=>{db.words=db.words.filter(w=>w.id!==v);db.players.forEach(p=>{if(p.cards['my:'+v]){delete p.cards['my:'+v];save(p);}});saveMeta();render();},
   signUp:()=>signIn('signup'),
   syncRetry:async()=>{sync='checking';render();await connectSite();if(getAcct())ui.syncMsg=sync==='site'?'Synced.':'Could not reach the site just now.';render();},
