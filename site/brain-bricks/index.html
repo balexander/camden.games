@@ -225,14 +225,14 @@ function startView(){
       <span>Questions</span>${seg('subject',g.subject,[['math','Math'],['words','Words']])}
       <span>Ball</span>${seg('speed',g.speed,[['chill','Chill'],['normal','Normal'],['fast','Fast']])}
       <span>Sound</span>${seg('sound',me.set.sound?'on':'off',[['on','On'],['off','Off']])}</div>
-      <p class="small soft">Drag to aim the first shot. Slide to move. After each level, ${B.QUIZ} questions: each right answer is a boost for the next level.</p></div>`;
+      <p class="small soft">Drag to aim each shot. Slide to move. After each level, ${B.QUIZ} questions: each right answer is a boost for the next level.</p></div>`;
 }
 function playView(){
   const w=B.world(S.level),first=S.level===w.first;
   return `<div class="hud"><div class="top"><button class="ib" data-act="pause" aria-label="Pause">${svg('pause')}</button>
       <span class="lv grow"><b>Level ${S.level}</b><small>${esc(w.name)}</small></span><span class="stat" id="score">${S.score}</span><span id="lives" aria-label="Lives"></span></div>
     <div class="fx"><span id="fx" class="row" style="gap:6px;flex-wrap:nowrap"></span><span id="combo" aria-live="off"></span></div></div>
-    <div class="stage"><div class="wrap"><canvas id="field" aria-label="Brick field. Drag to aim the first shot and let go to shoot. Then slide to move the paddle."></canvas>
+    <div class="stage"><div class="wrap"><canvas id="field" aria-label="Brick field. Each serve is aimed: drag to aim and let go to shoot. Then slide to move the paddle."></canvas>
       <div class="banner" id="banner" style="--c:${esc(w.colors[0])}">${first?`<small>World ${w.number}${w.lap?` · Lap ${w.lap+1}`:''}</small><b>${esc(w.name)}</b><span>${esc(w.intro)}</span>`:`<b>Level ${S.level}</b>`}</div></div>
       <p class="small soft hint">Slide anywhere to move</p></div>
     <div class="pause" id="pause" hidden><div class="sheet col center"><h2>Paused</h2><button class="btn go" data-act="resume">Keep playing</button>
@@ -278,8 +278,8 @@ function setupField(){
     ctx=c.getContext('2d');ctx.setTransform(scale*dpr,0,0,scale*dpr,0,0);const box=c.getBoundingClientRect();fieldLeft=box.left+2;fieldTop=box.top+2;draw(performance.now()/1000);};
   const at=e=>(e.clientX-fieldLeft)/scale,aimAt=e=>B.setAim(S,at(e),(e.clientY-fieldTop)/scale),aimed=()=>S.serving&&S.aimable&&!S.over;
   // The whole screen steers, so a finger resting below the field does not cover the paddle.
-  // The first shot of a level is aimed: the finger (or the mouse) turns the guide line, the paddle stays put, and lifting
-  // fires. aimBy is the pointer that pressed to aim; only its lift fires. Every other serve is slide to move, tap to launch.
+  // Every serve is aimed: the finger (or the mouse) turns the guide line, the paddle stays put, and lifting
+  // fires. aimBy is the pointer that pressed to aim; only its lift fires. Once the ball is away, sliding moves the paddle.
   app.onpointerdown=e=>{wake();if(view!=='play'||paused||e.target.closest('button,a'))return;e.preventDefault();
     if(aimed()){if(aimBy==null){aimBy=e.pointerId;aimAt(e);$('banner')?.classList.add('out');}return;}
     B.movePaddle(S,at(e));tap();};

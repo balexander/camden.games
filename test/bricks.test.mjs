@@ -140,7 +140,7 @@ test('the ball waits on the paddle until a tap, and no time passes while it wait
  for(const key of ['level','world','lap','speedName','bricks','paddle','balls','capsules','shots','effects','wideAll','shield','lives','lost','score','combo','serving','aimable','aim','over','speed','base','rally','time','idle','boosts','extraBall'])assert.ok(key in s,'the state has '+key);
 });
 
-test('the first serve of a level is aimed: the aim follows a point, clamped to 10 to 60 degrees either side',()=>{
+test('an aimed serve: the aim follows a point, clamped to 10 to 60 degrees either side',()=>{
  const s=B.start(1),b=s.balls[0],px=s.paddle.x;assert.equal(s.aimable,true);assert.ok(s.aim>=B.MIN_AIM&&s.aim<=B.MAX_ANGLE,'it starts inside the range');
  // A point up and to the right at 45 degrees, then the same on the left.
  B.setAim(s,b.x+100,b.y-100);assert.ok(near(s.aim,Math.PI/4));
@@ -157,7 +157,7 @@ test('the first serve of a level is aimed: the aim follows a point, clamped to 1
  assert.equal(s.paddle.x,px,'aiming never moves the paddle');assert.equal(b.x,px);assert.equal(s.serving,true);
 });
 
-test('an aimed first launch leaves at the chosen angle and the level\'s speed, and the extra ball mirrors it',()=>{
+test('an aimed launch on the first serve leaves at the chosen angle and the level\'s speed, and the extra ball mirrors it',()=>{
  for(const [n,speed,want] of [[1,'normal',310],[4,'fast',340*1.15]])for(const a of [-.9,-.3,.2,.75]){
   const s=B.start(n,{speed,boosts:['ball']}),b=s.balls[0];B.setAim(s,b.x+Math.sin(a)*150,b.y-Math.cos(a)*150);assert.ok(near(s.aim,a));
   // The random numbers are not used: the same aim gives the same shot whatever they are.
@@ -169,17 +169,28 @@ test('an aimed first launch leaves at the chosen angle and the level\'s speed, a
  }
 });
 
-test('after a lost life the serve is not aimed: the paddle slides, a tap launches at a random angle as before',()=>{
- const s=B.start(1);B.setAim(s,300,300);const px=s.paddle.x;assert.equal(s.paddle.x,px,'aiming does not move the paddle');
- B.launch(s,none);assert.ok(types(drop(s)).includes('lost'));
- assert.equal(s.serving,true);assert.equal(s.aimable,false);assert.deepEqual(plain(B.aimPath(s)),[]);
- const aim=s.aim;B.setAim(s,10,10);B.turnAim(s,-.4);assert.equal(s.aim,aim,'the aim is left alone');
- B.movePaddle(s,220);assert.equal(s.paddle.x,220,'sliding moves the paddle');assert.equal(s.balls[0].x,220,'and the waiting ball');
- // The old serve: a side from the first random number, .25 to .55 radians from the second.
- const seq=v=>{let i=0;return()=>v[i++];};
- B.launch(s,seq([.2,.5]));assert.ok(near(Math.atan2(s.balls[0].vx,-s.balls[0].vy),-.4));assert.ok(near(Math.hypot(s.balls[0].vx,s.balls[0].vy),310));
- drop(s);assert.equal(s.aimable,false);B.launch(s,seq([.7,0]));assert.ok(near(Math.atan2(s.balls[0].vx,-s.balls[0].vy),.25));
- // A new level is aimed again.
+test('every serve is aimed: after a lost life too, the aim is kept, the paddle stays put and the launch is not random',()=>{
+ const boom=()=>{throw new Error('an aimed serve is not random');};
+ const s=B.start(1,{boosts:['ball']});B.setAim(s,300,300);const kept=s.aim;
+ B.launch(s,boom);assert.equal(s.balls.length,2,'the extra ball comes with the first launch');assert.ok(types(drop(s)).includes('lost'));
+ // Second serve, after a lost life.
+ assert.equal(s.serving,true);assert.equal(s.aimable,true);assert.ok(B.aimPath(s).length>0,'there is a guide line');assert.equal(s.aim,kept,'the last aim is kept');
+ const px=s.paddle.x,b=s.balls[0];
+ B.setAim(s,b.x+100,b.y-100);assert.ok(near(s.aim,Math.PI/4),'setAim turns the aim');
+ B.setAim(s,b.x+200,b.y);assert.equal(s.aim,B.MAX_ANGLE,'and clamps it as before');B.setAim(s,b.x-200,b.y+50);assert.equal(s.aim,-B.MAX_ANGLE);
+ B.turnAim(s,5);assert.equal(s.aim,B.MAX_ANGLE);
+ assert.equal(s.paddle.x,px,'aiming does not move the paddle');assert.equal(b.x,px);
+ // The page does not slide the paddle while aiming, but the logic still allows it.
+ B.movePaddle(s,220);assert.equal(s.paddle.x,220);assert.equal(s.balls[0].x,220,'the waiting ball goes with it');
+ B.setAim(s,s.balls[0].x-Math.sin(.5)*150,s.balls[0].y-Math.cos(.5)*150);assert.ok(near(s.aim,-.5));
+ assert.equal(B.launch(s,boom),true);const l=s.balls[0];
+ assert.ok(near(Math.atan2(l.vx,-l.vy),-.5),'it leaves at exactly the aim');assert.ok(near(Math.hypot(l.vx,l.vy),310),'at the level\'s speed');
+ assert.equal(s.balls.length,1,'no extra ball on a later serve');
+ // Third serve: the aim from the last one is kept and it is aimed too.
+ assert.ok(types(drop(s)).includes('lost'));
+ assert.equal(s.serving,true);assert.equal(s.aimable,true);assert.ok(B.aimPath(s).length>0);assert.ok(near(s.aim,-.5),'the aim is kept');
+ B.launch(s,boom);assert.ok(near(Math.atan2(s.balls[0].vx,-s.balls[0].vy),-.5));assert.equal(s.balls.length,1);
+ // A new level is aimed again, starting from the default aim.
  assert.equal(B.start(2).aimable,true);
 });
 

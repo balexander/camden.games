@@ -56,17 +56,19 @@
 //                   that counted), speed is 'chill' | 'normal' | 'fast', score is the score to carry in, and top is the
 //                   player's furthest level, used only to decide which boosts are unlocked (it defaults to n).
 //   movePaddle(state, x)   puts the paddle's centre at x, kept inside the walls. Balls waiting on it move with it.
-//   setAim(state, x, y)    while an aimed serve waits (state.serving and state.aimable), points the aim from the waiting
+//   setAim(state, x, y)    while a serve waits (state.serving) and it is aimed (state.aimable, which is every serve), points the aim from the waiting
 //                   ball towards the field point (x, y). The angle is kept between MIN_AIM (0.17, about 10 degrees) and
 //                   MAX_ANGLE (1.05, about 60 degrees) from straight up, on the side the point is on; a point level with or
-//                   below the ball gives the flattest angle on its side. Never moves the paddle. Does nothing otherwise.
+//                   below the ball gives the flattest angle on its side. Never moves the paddle. Does nothing otherwise
+//                   (once the ball has gone, or if aimable were false).
 //   turnAim(state, by)     the same for keys: turns the aim by that many radians (positive is to the right), stepping over
 //                   the straight-up gap and stopping at the flattest angle.
-//   aimPath(state)  the guide line for an aimed serve: a list of points [{x, y}, ...] from the waiting ball along the aim to
+//   aimPath(state)  the guide line for the waiting serve, which is always aimed: a list of points [{x, y}, ...] from the waiting ball along the aim to
 //                   the first brick or the ceiling the ball would meet, by way of at most one side wall (a second side wall
-//                   ends the line). An empty list when the serve is not aimed.
-//   launch(state, rnd)     call to fire. If a ball is waiting to be served it goes: along state.aim when the serve is aimable,
-//                   otherwise at a random angle to one side as it always has. If no ball is waiting, every ball held by the
+//                   ends the line). An empty list when no serve is waiting or aimable is false.
+//   launch(state, rnd)     call to fire. If a ball is waiting to be served it goes: along state.aim. Every serve is aimable, so
+//                   that is every serve; if aimable were false (nothing sets it so today) it would leave at a random angle to
+//                   one side, the old slide-and-tap serve. If no ball is waiting, every ball held by the
 //                   magnet is let go. Returns true if a ball left the paddle. Does nothing once the level is over.
 //   step(state, dt, rnd)   moves everything on by dt seconds and returns a list of events (below). While state.serving is
 //                   true or state.over is set, nothing moves and no time passes, so timed effects do not run down while the
@@ -89,10 +91,12 @@
 //   shield     true while the floor is up
 //   lives, lost (lives lost this level), score, combo (bricks broken since a ball last touched the paddle)
 //   serving    true while a ball waits on the paddle to be served (the start of the level and after each lost life)
-//   aimable    true while the serve that is waiting, or the one just made, is aimed by the player: the first serve of the
-//              level. After a lost life it is false: the paddle slides and a tap launches. (The one place that decides
-//              this is the line in serve() that sets it; make it always true there to aim every serve.)
-//   aim        the angle an aimable serve leaves at, in radians from straight up, positive to the right. It starts at 0.4.
+//   aimable    true while the serve that is waiting, or the one just made, is aimed by the player. Every serve is aimed: the
+//              first of a level and the one after each lost life. If it were false (nothing sets it so today) the serve
+//              would be the old slide to move, tap to launch at a random angle. The one place that decides this is the
+//              line in serve() that sets it.
+//   aim        the angle an aimable serve leaves at, in radians from straight up, positive to the right. It starts at 0.4
+//              and is kept from one serve to the next (a new level starts again at 0.4).
 //   over       null while playing, then 'won' or 'lost'
 //   speed      the ball's speed right now; base is the level's speed before the rally speed-up and the slow effect
 //   rally      paddle hits since the last serve (every 6 add 2% to the speed, up to 20%)
@@ -274,8 +278,10 @@ function fit(s){
 // Keeps a ball that is sitting on the paddle on it.
 function seat(s,b){const p=s.paddle,half=p.w/2;b.off=clamp(b.off,-half,half);b.x=clamp(p.x+b.off,BALL_R,W-BALL_R);b.y=PADDLE_Y-BALL_R;}
 function serve(s){
-  // Only the first serve of a level is aimed. To aim every serve, set aimable to true here.
-  s.aimable=s.lost===0;
+  // Every serve is aimed: the first of a level and the one after each lost life. s.aim is left as it was, so the last angle is kept.
+  // This line is the one switch: set aimable to false here (nothing does today) and launch() goes back to the old slide-and-tap
+  // serve at a random angle.
+  s.aimable=true;
   s.serving=true;s.rally=0;s.combo=0;s.shots=[];
   s.balls=[{x:s.paddle.x,y:PADDLE_Y-BALL_R,vx:0,vy:0,stuck:true,off:0,hold:0,fire:s.effects.fire>0}];fit(s);
 }
