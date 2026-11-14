@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';import {spawn} from 'node:child_process';import {once} from 'node:events';
 const read=f=>readFileSync(new URL('../site/fact-dash/'+f,import.meta.url),'utf8'),ctx={crypto:globalThis.crypto,TextEncoder};
-vm.runInNewContext(read('../shared/srs.js')+read('words.js')+read('core.js'),ctx);const C=ctx.Core,WORDS=ctx.WORDS,SRS=ctx.SRS;
+vm.runInNewContext(read('../shared/srs.js')+read('../shared/words.js')+read('../shared/core.js'),ctx);const C=ctx.Core,WORDS=ctx.WORDS,SRS=ctx.SRS;
 
 test('fact decks cover the requested ranges with correct answers',()=>{
  const add=C.facts('add',false),sub=C.facts('sub',false),mul=C.facts('mul',false),div=C.facts('div',false);
@@ -69,20 +69,25 @@ test('own words, word mixes and multiple choice',()=>{
 test('the installable app shell is complete and serves only its own files',async t=>{
  const html=read('index.html'),sw=read('sw.js'),man=JSON.parse(read('manifest.webmanifest'));
  assert.equal(man.display,'standalone');for(const i of man.icons)assert.ok(readFileSync(new URL('../site/fact-dash/'+i.src,import.meta.url)).length>500);
- for(const f of ['manifest.webmanifest','icons/apple-touch-icon.png','../shared/srs.js','words.js','core.js'])assert.ok(html.includes(`"${f}"`),f);
+ for(const f of ['manifest.webmanifest','icons/apple-touch-icon.png','../shared/srs.js','../shared/words.js','../shared/core.js','../shared/profiles.js'])assert.ok(html.includes(`"${f}"`),f);
  for(const f of sw.match(/const SHELL=\[(.*?)\]/)[1].replace(/'/g,'').split(',').filter(f=>f!=='./'))assert.ok(readFileSync(new URL('../site/fact-dash/'+f,import.meta.url)).length>0,f);
  const port=14318,origin=`http://127.0.0.1:${port}`,child=spawn(process.execPath,['serve.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,DASH_PORT:String(port)},stdio:['ignore','pipe','pipe']});t.after(()=>child.kill());
  await once(child.stdout,'data');
- for(const [p,type] of [['/','text/html'],['/sw.js','text/javascript'],['/fact-dash/','text/html'],['/shared/srs.js','text/javascript'],['/fact-dash/core.js','text/javascript'],['/fact-dash/sw.js','text/javascript'],['/fact-dash/manifest.webmanifest','application/manifest+json'],['/fact-dash/icons/icon-192.png','image/png']]){const r=await fetch(origin+p);assert.equal(r.status,200,p);assert.ok(r.headers.get('content-type').startsWith(type),p);}
- assert.ok((await (await fetch(origin+'/')).text()).includes('href="fact-dash/"'),'the home page links to the game');
- for(const p of ['/serve.mjs','/../serve.mjs','/%2e%2e/package.json','/fact-dash/icons/../../../serve.mjs','/fact-dash/%2e%2e/%2e%2e/package.json','/test/app.test.mjs','/core.js'])assert.equal((await fetch(origin+p)).status,404,p);
+ for(const [p,type] of [['/','text/html'],['/sw.js','text/javascript'],['/fact-dash/','text/html'],['/shared/srs.js','text/javascript'],['/shared/core.js','text/javascript'],['/shared/profiles.js','text/javascript'],['/fact-dash/sw.js','text/javascript'],['/fact-dash/manifest.webmanifest','application/manifest+json'],['/fact-dash/icons/icon-192.png','image/png']]){const r=await fetch(origin+p);assert.equal(r.status,200,p);assert.ok(r.headers.get('content-type').startsWith(type),p);}
+ const home=await (await fetch(origin+'/')).text();for(const g of ['fact-dash/','brain-bricks/']){assert.ok(home.includes(`href:'${g}'`),'the home page lists '+g);assert.equal((await fetch(origin+'/'+g)).status,200,g+' is served');}
+ for(const p of ['/shared/site.css','/brain-bricks/game.js','/brain-bricks/icon.svg'])assert.equal((await fetch(origin+p)).status,200,p);
+ // every script a page loads exists, and each game loads the shared scheduler, question bank and profiles
+ for(const page of ['index.html','fact-dash/index.html','brain-bricks/index.html']){const text=readFileSync(new URL('../site/'+page,import.meta.url),'utf8'),srcs=[...text.matchAll(/<script src="([^"]+)"/g)].map(m=>m[1]);
+  for(const src of srcs)assert.ok(readFileSync(new URL(src,new URL('../site/'+page,import.meta.url))).length>0,page+' loads '+src);
+  for(const need of ['srs.js','words.js','core.js','profiles.js'])assert.ok(srcs.some(x=>x.endsWith('shared/'+need)),page+' loads the shared '+need);}
+ for(const p of ['/serve.mjs','/../serve.mjs','/%2e%2e/package.json','/fact-dash/icons/../../../serve.mjs','/fact-dash/%2e%2e/%2e%2e/package.json','/test/app.test.mjs','/core.js','/shared/../../package.json'])assert.equal((await fetch(origin+p)).status,404,p);
 });
 
 test('saved data survives a CSV file round trip and bad data is cleaned on the way in',()=>{
  const now=1.79e12,db={players:[
   {id:'a1',name:'Sam, "the" kid',av:'🦖',created:now,updated:now+5,subject:'words',set:{secs:90,hints:'fade',stretch:true,sound:false,answer:'type',peek:false,round:'practice'},
    cards:{'mul:6x7':{b:3,d:now+C.DAY,n:4,c:3,ms:2100,l:now},'w:fragile':{b:1,d:now,n:1,c:0,ms:0,l:now},'my:w1':{b:2,d:now,n:2,c:1,ms:5000,l:now}},
-   rounds:[{t:now,mode:'mul',secs:60,score:9,right:9,wrong:2},{t:now+500,mode:'add',secs:60,score:7,right:7,wrong:1,range:'low'},{t:now+1000,mode:'v1',secs:0,score:11,right:11,wrong:4}],best:{'mul:60':9,'v1:0':11},stars:27,days:{'2026-11-10':2}},
+   rounds:[{t:now,mode:'mul',secs:60,score:9,right:9,wrong:2},{t:now+500,mode:'add',secs:60,score:7,right:7,wrong:1,range:'low'},{t:now+1000,mode:'v1',secs:0,score:11,right:11,wrong:4}],best:{'mul:60':9,'v1:0':11},stars:27,days:{'2026-11-10':2},games:{'brain-bricks':{level:4,best:1200}}},
   {id:'b2',name:'Mia\nJo',av:'🐼',created:now,cards:{},rounds:[],best:{},stars:0,days:{}}],
   words:[{id:'w1',w:'migrate',def:'to move, far away',hook:'My "grate" rolls away.'}]};
  const csv=C.toCSV(db),lines=csv.trim().split('\r\n');
@@ -99,6 +104,8 @@ test('saved data survives a CSV file round trip and bad data is cleaned on the w
  assert.deepEqual(plain(old.set),{secs:60,hints:'always',stretch:false,sound:true,answer:'coach',peek:true,round:'practice',order:'random',range:'all'});
  assert.equal(old.name,'Sam');assert.equal(old.stars,0);assert.equal(old.av.length,4);assert.equal(SRS.view(old.cards['add:1+1']).seen,3,'cards are cleaned by the scheduler');assert.equal(old.cards.junk,undefined);
  assert.deepEqual(plain(old.rounds),[{t:5,mode:'add',secs:0,score:4,right:4,wrong:0,range:'all'}]);
+ // other games' data rides along untouched; anything that is not a small plain object under a folder-style name is dropped
+ assert.deepEqual(plain(C.cleanPlayer({id:'x',name:'A',games:{'brain-bricks':{level:3,list:[1,2]},'Bad Name':{a:1},big:{s:'x'.repeat(30000)},arr:[1],n:5}}).games),{'brain-bricks':{level:3,list:[1,2]}});assert.deepEqual(plain(old.games),{});
  for(const bad of [null,{},{id:'ok'},{id:'has space',name:'A'},{id:'x',name:'  '},{id:'../x',name:'A'}])assert.equal(C.cleanPlayer(bad),null);
  assert.equal(C.cleanPlayer({id:'x',name:'A',rounds:[{mode:'constructor'}]}).rounds.length,0);
  assert.deepEqual(plain(C.cleanWords([{id:'a',w:'x',def:'y'},{id:'a',w:'dup',def:'y'},{id:'b',w:'',def:'y'},{id:'c d',w:'x',def:'y'},'junk'])),[{id:'a',w:'x',def:'y',hook:''}]);

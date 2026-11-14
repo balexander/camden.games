@@ -1,0 +1,46 @@
+/* The site's look, shared by the home page and by new games: a phone-sized column on a sheet of graph paper, with rounded
+   white sheets and chunky buttons. Fact Dash carries its own copy of these rules inside its page, because it is also
+   published as a single file. Keep the two in step when a colour changes. */
+:root{
+  --paper:#f3f6fb; --grid:#dbe4f2; --card:#ffffff; --ink:#1b2540; --soft:#5b6785; --line:#c9d3e6;
+  --blue:#2457d6; --blue-ink:#ffffff; --blue-wash:#e3ebff; --amber:#e08a00; --good:#14804a; --good-wash:#dcf5e7;
+  --miss:#c2410c; --miss-wash:#ffe8dc; --star:#b97700;
+  --display:"Baloo 2","Trebuchet MS","Segoe UI",sans-serif; --body:"Nunito","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root{
+  --paper:#111728; --grid:#1c2540; --card:#1c2440; --ink:#eef2ff; --soft:#a3aecb; --line:#34406a;
+  --blue:#7ea2ff; --blue-ink:#0c1530; --blue-wash:#243260; --amber:#ffb84d; --good:#5fd699; --good-wash:#143a2a;
+  --miss:#ff9a6b; --miss-wash:#47231a; --star:#ffcf5c; color-scheme:dark}}
+html{box-sizing:border-box;height:100%;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box} [hidden]{display:none!important}
+body{margin:0;min-height:100%;background:var(--paper);color:var(--ink);font:500 16px/1.45 var(--body);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:22px 22px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-text-size-adjust:100%}
+#app{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding-block:16px}
+h1,h2,h3{font-family:var(--display);line-height:1.1;margin:0;text-wrap:balance}
+h1{font-size:2.3rem;font-weight:800} h2{font-size:1.5rem;font-weight:800} h3{font-size:1.1rem;font-weight:600}
+p{margin:0} .soft{color:var(--soft)} .small{font-size:.875rem} a{color:var(--blue)}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.btn{display:inline-block;font:800 1.1rem var(--display);background:var(--blue);color:var(--blue-ink);border-radius:14px;padding:12px 20px;box-shadow:0 4px 0 color-mix(in srgb,var(--blue) 60%,#000);text-decoration:none}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 color-mix(in srgb,var(--blue) 60%,#000)}
+.btn.ghost{background:var(--card);color:var(--ink);box-shadow:inset 0 0 0 2px var(--line)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap} .grow{flex:1;min-width:0} .col{display:flex;flex-direction:column;gap:10px}
+.sheet{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:16px}
+.stat{font:800 1rem var(--display);font-variant-numeric:tabular-nums;white-space:nowrap} .star{color:var(--star)}
+.av{font-size:2.6rem;line-height:1.1}
+input[type=text],input[type=password]{font:inherit;color:var(--ink);background:var(--card);border:2px solid var(--line);border-radius:12px;padding:10px 12px;width:100%}
+summary{cursor:pointer;font-weight:700}
+/* picking who is playing */
+.who{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+.who button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 8px}
+.who .new{border-style:dashed;color:var(--blue)} .who .new .av{font-family:var(--display);font-weight:800}
+.avs{display:flex;flex-wrap:wrap;gap:6px}
+.avs button{font-size:1.7rem;width:48px;height:48px;border-radius:12px;border:2px solid transparent}
+.avs button[aria-pressed="true"]{border-color:var(--blue);background:var(--blue-wash)}
+/* a tile for each game on the home page */
+.game{display:flex;gap:16px;align-items:center;color:inherit;text-decoration:none}
+.game:active{transform:translateY(2px)}
+.game img{width:72px;height:72px;border-radius:16px;flex:none}
+.game h2{color:var(--blue)}

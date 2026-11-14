@@ -14,35 +14,36 @@ test('accounts: sign up, sign in, save players, and keep everyone else out',{ski
  const key=c=>c.repeat(64),phone=device(),laptop=device(),stranger=device(),doc={name:'Sam',updated:200,json:'{"v":2}'};
 
  for(const p of ['/','/fact-dash/'])assert.equal((await fetch(origin+p)).headers.get('content-type').split(';')[0],'text/html',p+' is served');
- assert.equal((await stranger('GET','data/fact-dash')).status,401,'nothing is readable before signing in');
+ assert.equal((await stranger('GET','data/profiles')).status,401,'nothing is readable before signing in');
  for(const bad of [{name:'ab',key:key('a')},{name:'two words',key:key('a')},{name:'sam',key:'short'},{name:'sam'},null])assert.equal((await stranger('POST','signup',bad)).status,400);
  assert.equal((await stranger('POST','login',{name:'sam',key:key('a')})).status,401,'no account yet');
 
  let r=await phone('POST','signup',{name:' Sam ',key:key('a')});assert.equal(r.status,200);assert.equal(r.body.name,'sam');assert.ok(!r.cookie.includes(key('a')),'the cookie is not the password key');
  assert.equal((await stranger('POST','signup',{name:'SAM',key:key('b')})).status,409,'a name can only be taken once');
- assert.deepEqual((await phone('GET','data/fact-dash')).body,{docs:[],name:'sam'});
- assert.equal((await phone('PUT','data/fact-dash/p_abc',doc)).status,200);
- assert.equal((await phone('PUT','data/fact-dash/p_abc',{name:'Old',updated:100,json:'{"v":1}'})).status,200);
- assert.equal((await phone('PUT','data/fact-dash/meta',{updated:5,json:'{"words":[]}'})).status,200);
+ assert.deepEqual((await phone('GET','data/profiles')).body,{docs:[],name:'sam'});
+ assert.equal((await phone('PUT','data/profiles/p_abc',doc)).status,200);
+ assert.equal((await phone('PUT','data/profiles/p_abc',{name:'Old',updated:100,json:'{"v":1}'})).status,200);
+ assert.equal((await phone('PUT','data/profiles/meta',{updated:5,json:'{"words":[]}'})).status,200);
 
  assert.equal((await laptop('POST','login',{name:'sam',key:key('b')})).status,401,'wrong password');
- assert.equal((await laptop('GET','data/fact-dash')).status,401);
+ assert.equal((await laptop('GET','data/profiles')).status,401);
  r=await laptop('POST','login',{name:'Sam',key:key('a')});assert.equal(r.status,200);
- r=await laptop('GET','data/fact-dash');assert.deepEqual(r.body.docs.find(d=>d.id==='p_abc'),{id:'p_abc',...doc},'the second device sees the newest copy');assert.equal(r.body.docs.length,2);
+ r=await laptop('GET','data/profiles');assert.deepEqual(r.body.docs.find(d=>d.id==='p_abc'),{id:'p_abc',...doc},'the second device sees the newest copy');assert.equal(r.body.docs.length,2);
  assert.match(r.cookie,/Max-Age=34560000/,'using the app renews the sign-in');
 
  assert.equal((await stranger('POST','signup',{name:'other',key:key('c')})).status,200);
- assert.deepEqual((await stranger('GET','data/fact-dash')).body.docs,[],'another account sees none of it');
- for(const [m,p,b,want] of [['PUT','data/fact-dash/BAD.ID',doc,400],['PUT','data/fact-dash/p_abc',{json:5},400],['POST','data/fact-dash',null,405],['GET','nope',null,404],['GET','login',null,405]])assert.equal((await phone(m,p,b)).status,want,m+' '+p);
- assert.equal((await phone('PUT','data/fact-dash/p_abc',doc,{origin:'https://evil.example'})).status,403,'other sites cannot write with our cookie');
- assert.equal((await fetch(origin+'/api/data/fact-dash',{headers:{cookie:'fd='+key('0')+'.sam'}})).status,401,'a made-up cookie is refused');
+ assert.deepEqual((await stranger('GET','data/profiles')).body.docs,[],'another account sees none of it');
+ for(const [m,p,b,want] of [['PUT','data/profiles/BAD.ID',doc,400],['PUT','data/profiles/p_abc',{json:5},400],['POST','data/profiles',null,405],['GET','nope',null,404],['GET','login',null,405]])assert.equal((await phone(m,p,b)).status,want,m+' '+p);
+ assert.equal((await phone('PUT','data/profiles/p_abc',doc,{origin:'https://evil.example'})).status,403,'other sites cannot write with our cookie');
+ assert.equal((await fetch(origin+'/api/data/profiles',{headers:{cookie:'fd='+key('0')+'.sam'}})).status,401,'a made-up cookie is refused');
 
- for(const p of ['sync','data/other-game','data/fact-dash/p_abc/extra'])assert.equal((await phone('GET',p)).status,404,p+' is not a place to save');
- assert.equal((await laptop('DELETE','data/fact-dash/p_abc')).status,200);assert.equal((await phone('GET','data/fact-dash')).body.docs.length,1);
- assert.equal((await laptop('POST','logout')).status,200);assert.equal((await laptop('GET','data/fact-dash')).status,401);
- assert.equal((await phone('GET','data/fact-dash')).status,200,'signing out one device leaves the other signed in');
+ assert.deepEqual((await phone('GET','data/fact-dash')).body.docs,(await phone('GET','data/profiles')).body.docs,'the old address of the store still reaches it');
+ for(const p of ['sync','data/other-game','data/profiles/p_abc/extra'])assert.equal((await phone('GET',p)).status,404,p+' is not a place to save');
+ assert.equal((await laptop('DELETE','data/profiles/p_abc')).status,200);assert.equal((await phone('GET','data/profiles')).body.docs.length,1);
+ assert.equal((await laptop('POST','logout')).status,200);assert.equal((await laptop('GET','data/profiles')).status,401);
+ assert.equal((await phone('GET','data/profiles')).status,200,'signing out one device leaves the other signed in');
 
  for(let i=0;i<10;i++)assert.equal((await stranger('POST','login',{name:'sam',key:key('d')})).status,401);
  assert.equal((await laptop('POST','login',{name:'sam',key:key('a')})).status,429,'ten wrong passwords lock new sign-ins, even with the right one');
- assert.equal((await phone('GET','data/fact-dash')).status,200,'and a device already signed in keeps working');
+ assert.equal((await phone('GET','data/profiles')).status,200,'and a device already signed in keeps working');
 });

@@ -173,24 +173,17 @@ svg text{font:700 11px var(--body);fill:var(--soft)}
 <!--body-->
 <main id="app"></main>
 <script src="../shared/srs.js"></script>
-<script src="words.js"></script>
-<script src="core.js"></script>
+<script src="../shared/words.js"></script>
+<script src="../shared/core.js"></script>
+<script src="../shared/profiles.js"></script>
 <script>
 (()=>{
-const SPOKEN=1500,KEY='factdash.v1',GOAL=3,CHILL=15,AVS=['🦊','🐼','🦖','🐙','🦁','🐸','🦄','🐧','🚀','⚽','🐯','🦉'];
+const SPOKEN=1500,GOAL=3,CHILL=15,AVS=['🦊','🐼','🦖','🐙','🦁','🐸','🦄','🐧','🚀','⚽','🐯','🦉'];
 const M=Core.MODES,TILES={math:['add','sub','mul','div','mix'],words:['v1','v2','v3','mine','vmix']},POS={adj:'describing word',verb:'action word',noun:'naming word'};
 const app=document.getElementById('app'),esc=s=>String(s).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
-let db={v:1,players:[],cur:null,words:[]},view='who',ui={av:AVS[0],tab:'add',confirm:null,cell:null,adding:false,msg:'',pending:null},G=null,timer=null,actx=null,wake=null;
-try{const raw=JSON.parse(localStorage.getItem(KEY));if(raw?.v===1&&Array.isArray(raw.players))db=raw;}catch{}
-// Saved data is checked field by field on the way in, which also fills in anything an older save lacks.
-const fill=()=>{db.words=Core.cleanWords(db.words);db.gone=db.gone&&typeof db.gone==='object'?db.gone:{};db.players=(Array.isArray(db.players)?db.players:[]).map(Core.cleanPlayer).filter(Boolean);if(!db.players.some(p=>p.id===db.cur))db.cur=null;};fill();
-const store=()=>{try{localStorage.setItem(KEY,JSON.stringify(db));}catch{}};
-// save(p) records a change to one player and saveMeta() a change to the shared word list. Both also go to the account store when there is one.
-const save=p=>{if(p){p.updated=Date.now();push(p.id);}store();};
-const saveMeta=()=>{db.metaUpdated=Date.now();push('meta');store();};
-const me=()=>db.players.find(p=>p.id===db.cur);
-const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const newPlayer=(name,av)=>Core.cleanPlayer({id:uid(),name,av,created:Date.now()});
+// The players and their saved progress belong to the whole site (see ../shared/profiles.js). Opened from the site's home page, where someone was just picked, the game skips its own picker.
+const db=Profiles.db,{me,save,saveMeta,store,uid}=Profiles,getAcct=Profiles.account,online=Profiles.online;
+let view=Profiles.picked()?'home':'who',ui={av:AVS[0],tab:'add',confirm:null,cell:null,adding:false,msg:'',pending:null},G=null,timer=null,actx=null,wake=null;
 const opts=p=>({stretch:p.set.stretch,custom:db.words,range:p.set.range});
 // Adding, subtracting and the math mix keep a separate best score for each number range.
 const rangeOf=(p,m)=>m==='add'||m==='sub'||m==='mix'?p.set.range:'all',bestKey=(p,m)=>m+':'+secsOf(p)+(rangeOf(p,m)==='all'?'':':'+rangeOf(p,m));
@@ -203,70 +196,19 @@ function beep(notes){const p=me();if(!p?.set.sound)return;try{actx=actx||new (wi
 function speak(text){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=.85;speechSynthesis.speak(u);}catch{}}
 
 /* ---------- keeping the data ----------
-   Every change is written to this browser's storage straight away. A copy is also kept online, one document per
-   player: inside Claude in the viewer's account store, and on the site itself under the name and password the
-   grown-up signs in with. Whichever copy of a player was changed last wins. */
-let col=null,sync=window.claude?.use?'checking':'local',chain=Promise.resolve(),flushTimer=null;const dirty=new Set();
-function push(id){if(!col)return;dirty.add(id);clearTimeout(flushTimer);flushTimer=setTimeout(flush,700);}
-function flush(){clearTimeout(flushTimer);const ids=[...dirty];dirty.clear();
-  for(const id of ids)chain=chain.then(()=>writeDoc(id)).then(()=>{if(sync==='error'){sync=window.claude?.use?'account':'site';note();}},()=>{if(!col)return;sync='error';dirty.add(id);note();});}
-function writeDoc(id){
-  if(id==='meta')return col.doc('meta').set({updated:db.metaUpdated||1,json:JSON.stringify({words:db.words,gone:db.gone})});
-  const p=db.players.find(x=>x.id===id);return p?col.doc('p_'+id).set({name:p.name,updated:p.updated||1,json:JSON.stringify(p)}):col.doc('p_'+id).delete();
-}
-// Outside Claude, signing in keeps the players in the site's own database. The browser holds the sign-in cookie; this key only remembers the name.
-// The sign-in belongs to the whole site; this game's documents sit under its own name there.
-const ACCT_KEY='factdash.account',DATA='data/fact-dash',online=/^https?:$/.test(location.protocol)&&!window.claude?.use;
-const getAcct=()=>{try{return Core.cleanLogin(localStorage.getItem(ACCT_KEY));}catch{return '';}};
-const setAcct=n=>{try{if(n)localStorage.setItem(ACCT_KEY,n);else localStorage.removeItem(ACCT_KEY);}catch{}};
-try{localStorage.removeItem('factdash.sync');}catch{}   // a sync code left by an earlier version
-const api=async(method,path,body)=>{const r=await fetch('/api/'+path,{method,headers:{'content-type':'application/json'},body:body&&JSON.stringify(body),cache:'no-store'});
-  if(r.status===401&&path.startsWith(DATA))signedOut();
-  if(!r.ok)throw Object.assign(Error('api '+r.status),{status:r.status});return r.json();};
-function signedOut(){if(!getAcct())return;setAcct('');col=null;sync='local';ui.syncMsg='This device was signed out. Sign in again to keep saving online.';note(true);}
-const remoteCol={get:async()=>({docs:(await api('GET',DATA)).docs.map(d=>({id:d.id,data:()=>d}))}),doc:id=>({set:o=>api('PUT',DATA+'/'+id,o),delete:()=>api('DELETE',DATA+'/'+id)})};
-async function connectSite(){
-  if(!online||!getAcct()){sync='local';return note(true);}
-  try{const snap=await Promise.race([remoteCol.get(),new Promise((_,no)=>setTimeout(()=>no(Error('timeout')),10000))]);col=remoteCol;merge(snap.docs);sync='site';}
-  catch{col=null;if(getAcct())sync='error';}
-  note(true);
-}
-// Signs in or creates the account, then merges this device's players with the account's. The message changes in place so the typed password is kept.
+   Profiles (../shared/profiles.js) holds the players, saves every change in this browser, and keeps a copy online when signed in.
+   This page tells it which player is mid-round, and redraws when data arrives. */
+Profiles.busyWith(()=>view==='play'||view==='done'?db.cur:null);
+Profiles.on(redraw=>{const n=Profiles.takeNotice();if(n)ui.syncMsg=n;if(!me()&&view!=='who'){view='who';G=null;}note(redraw);});
+// Signs in or creates the account. The message changes in place so the typed password is kept.
 async function signIn(path){
   const tell=t=>{ui.syncMsg=t;const el=document.getElementById('syncMsg');if(el)el.textContent=t;},raw=document.getElementById('acctName')?.value||'',name=Core.cleanLogin(raw),pw=document.getElementById('acctPw')?.value||'';ui.acctTry=raw;
   if(!name)return tell('The name needs 3 or more letters or numbers and no spaces. An email address works too.');
   if(pw.length<8)return tell('The password needs 8 or more characters.');
-  tell(path==='signup'?'Creating the account…':'Signing in…');
-  try{await api('POST',path,{name,key:await Core.passKey(name,pw)});}
-  catch(e){return tell({401:'That name and password do not match.',409:'That name is taken. Sign in, or pick another name.',429:'Too many wrong tries. Wait 15 minutes, then try again.',403:'New accounts are closed on this site.'}[e.status]||'Could not sign in. Check the connection and try again.');}
-  setAcct(name);ui.acctTry='';ui.syncMsg='';sync='checking';render();await connectSite();
-  if(sync==='site')ui.syncMsg=path==='signup'?'Account made. Players are saved online from now on.':'Signed in. Players are saved online from now on.';render();
-}
-async function connect(){
-  if(!window.claude?.use)return connectSite();
-  try{
-    const [store2,user]=await Promise.all([claude.use('db'),claude.use('user')]),uid=store2&&user?await user.id():null;
-    if(!uid){sync='local';return note(true);}
-    const c=store2.collection('data/users/'+uid),snap=await Promise.race([c.get(),new Promise((_,no)=>setTimeout(()=>no(Error('timeout')),10000))]);
-    col=c;merge(snap.docs);sync='account';
-  }catch{sync='error';}
-  note(true);
-}
-function merge(docs){
-  const remote={};let meta=null;
-  for(const d of docs){try{const b=d.data();if(!b)continue;if(d.id==='meta')meta={...JSON.parse(b.json),updated:+b.updated||0};else if(d.id.startsWith('p_')){const p=Core.cleanPlayer(JSON.parse(b.json));if(p)remote[p.id]=p;}}catch{}}
-  const theirs=meta&&typeof meta.gone==='object'&&meta.gone||{},gone={...theirs};for(const [k,v] of Object.entries(db.gone))gone[k]=Math.max(+v||0,+gone[k]||0);
-  let metaDirty=Object.keys(gone).some(k=>gone[k]!==theirs[k]);
-  if(meta&&meta.updated>(db.metaUpdated||0)){db.words=Core.cleanWords(meta.words);db.metaUpdated=meta.updated;}else if((db.metaUpdated||0)>(meta?.updated||0))metaDirty=true;
-  db.gone=gone;
-  const busy=view==='play'||view==='done'?db.cur:null,out=[];   // never swap out a player in the middle of a round
-  for(const l of db.players){const r=remote[l.id];delete remote[l.id];l.updated=l.updated||1;
-    if(l.id!==busy&&gone[l.id]>=l.updated)continue;                          // removed on another device
-    if(r&&l.id!==busy&&r.updated>l.updated)out.push(r);                      // changed more recently elsewhere
-    else{out.push(l);if(!r||l.updated>r.updated)push(l.id);}}
-  for(const r of Object.values(remote)){if(gone[r.id]>=r.updated)push(r.id);else out.push(r);}
-  db.players=out;if(!me()){db.cur=null;if(view!=='who'){view='who';G=null;}}
-  if(metaDirty)push('meta');store();
+  tell(path==='signup'?'Creating the account…':'Signing in…');ui.syncMsg='';
+  const r=await Profiles.signIn(path,name,pw);
+  if(!r.ok)return tell({401:'That name and password do not match.',409:'That name is taken. Sign in, or pick another name.',429:'Too many wrong tries. Wait 15 minutes, then try again.',403:'New accounts are closed on this site.'}[r.status]||'Could not sign in. Check the connection and try again.');
+  ui.acctTry='';ui.syncMsg=Profiles.status==='site'?(path==='signup'?'Account made. Players are saved online from now on.':'Signed in. Players are saved online from now on.'):'';render();
 }
 // Redraw after data arrives, keeping whatever is being typed. Mid-round, only the status line changes.
 function note(redraw){
@@ -275,10 +217,10 @@ function note(redraw){
   const el=document.getElementById('syncNote');if(el)el.textContent=statusText(true);
 }
 function statusText(short){
-  if(sync==='site')return short?'Saved online.':'Saved online after every round. Sign in with the same name and password on any device to pick up where you left off.';
-  if(sync==='account')return short?'Saved to your Claude account.':'Saved to your Claude account after every round. It stays between sessions and follows you to other devices.';
-  if(sync==='checking')return 'Looking for saved players…';
-  if(sync==='error')return !window.claude?.use?(short?'Could not reach the site. Saved on this device for now.':'Could not reach the site just now. Changes are kept on this device and sent the next time the page opens with a connection.')
+  if(Profiles.status==='site')return short?'Saved online.':'Saved online after every round. Sign in with the same name and password on any device to pick up where you left off.';
+  if(Profiles.status==='account')return short?'Saved to your Claude account.':'Saved to your Claude account after every round. It stays between sessions and follows you to other devices.';
+  if(Profiles.status==='checking')return 'Looking for saved players…';
+  if(Profiles.status==='error')return !window.claude?.use?(short?'Could not reach the site. Saved on this device for now.':'Could not reach the site just now. Changes are kept on this device and sent the next time the page opens with a connection.')
     :short?'Could not reach your Claude account. Saved on this device for now.':'Could not reach your Claude account just now. Changes are kept on this device and sent when the page next opens.';
   return window.claude?.use?(short?'Saved in this browser only.':'Saved in this browser only. Open the page signed in to Claude to keep it between sessions, or save a CSV file.')
     :(short?'Saved on this device.':`Saved on this device after every answer. ${online?'Sign in under Online account to keep it online, or save':'Save'} a CSV file for your own copy.`);
@@ -347,7 +289,7 @@ function homeView(p){
     <div class="subject" role="group" aria-label="Round type"><button data-act="round" data-v="practice" aria-pressed="${!secs}">Practice<small>${CHILL} cards, no clock</small></button><button data-act="round" data-v="speed" aria-pressed="${!!secs}">Speed round<small>${p.set.secs} seconds on the clock</small></button></div>
     ${p.subject==='math'?`<div class="col" style="gap:4px"><span class="small soft">Numbers for adding and subtracting</span><div class="subject three" role="group" aria-label="Numbers for adding and subtracting">${[['low','Up to 10'],['high',`11 to ${p.set.stretch?40:20}`],['all','All']].map(([v,l])=>`<button data-act="range" data-v="${v}" aria-pressed="${p.set.range===v}">${l}</button>`).join('')}</div></div>`:''}
     <div class="modes">${tiles}</div>
-    <div class="row"><button class="btn ghost" data-act="go" data-v="stats">My progress</button><button class="btn ghost" data-act="go" data-v="settings">Grown-ups</button></div>`;
+    <div class="row"><button class="btn ghost" data-act="go" data-v="stats">My progress</button><button class="btn ghost" data-act="go" data-v="settings">Grown-ups</button>${online?'<a class="btn ghost" href="../" style="text-decoration:none;display:inline-block">More games</a>':''}</div>`;
 }
 function playView(p){
   if(G.count)return `<div class="count" aria-live="polite">${G.count}</div>`;
@@ -539,7 +481,7 @@ function confetti(){if(matchMedia('(prefers-reduced-motion:reduce)').matches)ret
 const acts={
   av:v=>{ui.av=v;const n=document.getElementById('pname')?.value||'';render();const el=document.getElementById('pname');if(el)el.value=n;},
   add:()=>{ui.adding=true;render();document.getElementById('pname')?.focus();},cancelAdd:()=>{ui.adding=false;render();},
-  pick:v=>{db.cur=v;store();view='home';render();},who:()=>{view='who';ui.adding=false;render();},
+  pick:v=>{Profiles.choose(v);view='home';render();},who:()=>{view='who';ui.adding=false;render();},
   go:v=>{view=v;ui.confirm=null;ui.cell=null;ui.msg='';ui.pending=null;render();scrollTo(0,0);},start:v=>start(v),
   subject:v=>{const p=me();p.subject=v;save(p);render();},round:v=>{const p=me();p.set.round=v==='practice'?'practice':'speed';save(p);render();},range:v=>{const p=me();p.set.range=Core.SETTINGS.range.includes(v)?v:'all';save(p);render();},tipOff:()=>{db.tipOff=true;store();render();},
   quit:()=>{if(G.n)finish();else{clearInterval(timer);G=null;view='home';render();}},
@@ -552,11 +494,11 @@ const acts={
   set:(v,el)=>{const p=me(),k=el.dataset.k;p.set[k]=k==='secs'?Number(v):k==='stretch'||k==='sound'||k==='peek'?v==='true':v;save(p);render();},
   confirm:v=>{ui.confirm=v||null;render();},
   reset:()=>{const p=me();Object.assign(p,{cards:{},rounds:[],best:{},stars:0,days:{}});save(p);ui.confirm=null;view='home';render();},
-  remove:id=>{if(!db.players.some(p=>p.id===id))return;db.gone[id]=Date.now();db.players=db.players.filter(p=>p.id!==id);push(id);saveMeta();ui.confirm=null;if(db.cur===id){db.cur=null;view='who';}render();},
+  remove:id=>{Profiles.remove(id);ui.confirm=null;if(!me())view='who';render();},
   unword:v=>{db.words=db.words.filter(w=>w.id!==v);db.players.forEach(p=>{if(p.cards['my:'+v]){delete p.cards['my:'+v];save(p);}});saveMeta();render();},
   signUp:()=>signIn('signup'),
-  syncRetry:async()=>{sync='checking';render();await connectSite();if(getAcct())ui.syncMsg=sync==='site'?'Synced.':'Could not reach the site just now.';render();},
-  signOut:async()=>{flush();await chain;api('POST','logout').catch(()=>{});setAcct('');col=null;sync='local';ui.syncMsg='Signed out. The players stay on this device.';render();},
+  syncRetry:async()=>{Profiles.status='checking';render();await Profiles.connect();if(getAcct())ui.syncMsg=Profiles.status==='site'?'Synced.':'Could not reach the site just now.';render();},
+  signOut:async()=>{await Profiles.signOut();ui.syncMsg='Signed out. The players stay on this device.';render();},
   csvSave:()=>saveCSV(),csvPick:()=>document.getElementById('csvFile')?.click(),csvCancel:()=>{ui.pending=null;ui.msg='';render();},
   csvLoad:()=>{const d=ui.pending;if(!d)return;
     for(const p of d.players){delete db.gone[p.id];const i=db.players.findIndex(x=>x.id===p.id);if(i<0)db.players.push(p);else db.players[i]=p;save(p);}
@@ -571,7 +513,7 @@ app.addEventListener('submit',e=>{e.preventDefault();
     if(db.words.some(x=>x.w.toLowerCase()===w.toLowerCase())){msg.textContent=`${w} is already in your list.`;return;}
     if(db.words.length>=300){msg.textContent='That is the limit of 300 words. Remove one to add another.';return;}
     db.words.push({id:uid(),w,def,hook:val('chook')});saveMeta();render();document.getElementById('cw').focus();return;}
-  const el=document.getElementById('pname'),name=el.value.trim();if(!name){el.focus();return;}const p=newPlayer(name,ui.av);db.players.push(p);db.cur=p.id;ui.adding=false;save(p);view='home';render();});
+  const el=document.getElementById('pname'),name=el.value.trim();if(!name){el.focus();return;}const p=Profiles.add(name,ui.av);if(!p)return;Profiles.choose(p.id);ui.adding=false;view='home';render();});
 app.addEventListener('change',e=>{if(e.target.id!=='csvFile'||!e.target.files[0])return;const r=new FileReader();
   r.onload=()=>{try{ui.pending=Core.fromCSV(r.result);ui.msg='';}catch{ui.pending=null;ui.msg='That file is not a Fact Dash CSV. Choose a file saved from Save CSV file.';}render();};
   r.onerror=()=>{ui.msg='That file could not be read. Try choosing it again.';render();};r.readAsText(e.target.files[0]);});
@@ -581,9 +523,9 @@ document.addEventListener('keydown',e=>{if(view!=='play'||!G||e.metaKey||e.ctrlK
   if(me().set.answer==='coach'){if(k==='y'||k==='arrowright')acts.mark('yes');else if(k==='n'||k==='arrowleft')acts.mark('no');return;}
   if(G.cur?.choices){if(/^[1-3]$/.test(k))acts.choose(k-1);return;}
   if(/^[0-9]$/.test(k))key(k);else if(k==='backspace'){e.preventDefault();key('back');}});
-render();   // always opens on the player picker
-connect();
-document.addEventListener('visibilitychange',()=>{if(document.hidden)flush();else if(online&&getAcct()&&view!=='play'&&view!=='done')connectSite();});
+render();
+Profiles.connect();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)Profiles.flush();else if(online&&getAcct()&&view!=='play'&&view!=='done')Profiles.connect();});
 // Installed-app plumbing: offline cache and a request to keep saved progress from being cleared.
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)&&self===top)navigator.serviceWorker.register('sw.js').catch(()=>{});
 try{navigator.storage?.persist?.().catch(()=>{});}catch{}
