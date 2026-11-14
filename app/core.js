@@ -209,5 +209,13 @@ function fromCSV(text){
   if(!out.players.length&&!out.words.length)throw Error('no saved data in this file');
   return out;
 }
-return {OPS,MODES,INTERVALS,MAXBOX,STRONG,DAY,SETTINGS,cleanPlayer,cleanWords,toCSV,fromCSV,facts,items,deck,choices,mnemonic,grade,pickNext,mastery,dayKey,dayStreak,level,fastMs};
+// Signing in to the site. The name is lower-cased, and may be an email address. The password never leaves the device:
+// it is stretched into a key here (slow on purpose, so a stolen copy of the server's records is hard to guess from) and only the key is sent.
+const cleanLogin=t=>{const n=String(t??'').trim().toLowerCase();return /^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(n)?n:'';};
+async function passKey(name,password){
+  const e=new TextEncoder(),k=await crypto.subtle.importKey('raw',e.encode(password),'PBKDF2',false,['deriveBits']);
+  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:e.encode('factdash:'+name),iterations:300000},k,256);
+  return [...new Uint8Array(bits)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+return {OPS,MODES,INTERVALS,MAXBOX,STRONG,DAY,SETTINGS,cleanPlayer,cleanWords,toCSV,fromCSV,cleanLogin,passKey,facts,items,deck,choices,mnemonic,grade,pickNext,mastery,dayKey,dayStreak,level,fastMs};
 })();

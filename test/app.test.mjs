@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';import {spawn} from 'node:child_process';import {once} from 'node:events';
-const read=f=>readFileSync(new URL('../app/'+f,import.meta.url),'utf8'),ctx={};
+const read=f=>readFileSync(new URL('../app/'+f,import.meta.url),'utf8'),ctx={crypto:globalThis.crypto,TextEncoder};
 vm.runInNewContext(read('words.js')+read('core.js'),ctx);const C=ctx.Core,WORDS=ctx.WORDS,HOUR=36e5;
 
 test('fact decks cover the requested ranges with correct answers',()=>{
@@ -134,4 +134,13 @@ test('saved data survives a CSV file round trip and bad data is cleaned on the w
  for(const bad of [null,{},{id:'ok'},{id:'has space',name:'A'},{id:'x',name:'  '},{id:'../x',name:'A'}])assert.equal(C.cleanPlayer(bad),null);
  assert.equal(C.cleanPlayer({id:'x',name:'A',rounds:[{mode:'constructor'}]}).rounds.length,0);
  assert.deepEqual(plain(C.cleanWords([{id:'a',w:'x',def:'y'},{id:'a',w:'dup',def:'y'},{id:'b',w:'',def:'y'},{id:'c d',w:'x',def:'y'},'junk'])),[{id:'a',w:'x',def:'y',hook:''}]);
+});
+
+test('sign-in names are tidied and the password is stretched into a key before it is sent',async()=>{
+ assert.equal(C.cleanLogin('  Brendan '),'brendan');assert.equal(C.cleanLogin('Mum.Dad+kids@Example.com'),'mum.dad+kids@example.com');
+ for(const bad of ['','ab','two words','.dot','a'.repeat(65),'semi;colon',null,undefined])assert.equal(C.cleanLogin(bad),'',String(bad));
+ const key=await C.passKey('sam','correct horse');assert.match(key,/^[0-9a-f]{64}$/);
+ assert.equal(await C.passKey('sam','correct horse'),key,'the same name and password always give the same key');
+ assert.notEqual(await C.passKey('sam','correct horsf'),key);assert.notEqual(await C.passKey('sal','correct horse'),key,'two accounts with one password get different keys');
+ assert.ok(!key.includes('correct'));
 });

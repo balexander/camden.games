@@ -67,7 +67,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px soli
 .avs{display:flex;flex-wrap:wrap;gap:6px}
 .avs button{font-size:1.7rem;width:48px;height:48px;border-radius:12px;border:2px solid transparent}
 .avs button[aria-pressed="true"]{border-color:var(--blue);background:var(--blue-wash)}
-input[type=text],textarea{font:inherit;color:var(--ink);background:var(--card);border:2px solid var(--line);border-radius:12px;padding:10px 12px;width:100%}
+input[type=text],input[type=password],textarea{font:inherit;color:var(--ink);background:var(--card);border:2px solid var(--line);border-radius:12px;padding:10px 12px;width:100%}
 /* home */
 .goal i{display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid var(--line);margin-right:4px;vertical-align:-2px}
 .goal i.on{background:var(--good);border-color:var(--good)}
@@ -202,37 +202,46 @@ function beep(notes){const p=me();if(!p?.set.sound)return;try{actx=actx||new (wi
 function speak(text){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=.85;speechSynthesis.speak(u);}catch{}}
 
 /* ---------- keeping the data ----------
-   Every change is written to this browser's storage straight away. Inside Claude the page can also keep a private
-   copy in the viewer's account store, one document per player, so progress survives a cleared browser and follows
-   the person to other devices. Whichever copy of a player was changed last wins. */
+   Every change is written to this browser's storage straight away. A copy is also kept online, one document per
+   player: inside Claude in the viewer's account store, and on the site itself under the name and password the
+   grown-up signs in with. Whichever copy of a player was changed last wins. */
 let col=null,sync=window.claude?.use?'checking':'local',chain=Promise.resolve(),flushTimer=null;const dirty=new Set();
 function push(id){if(!col)return;dirty.add(id);clearTimeout(flushTimer);flushTimer=setTimeout(flush,700);}
 function flush(){clearTimeout(flushTimer);const ids=[...dirty];dirty.clear();
-  for(const id of ids)chain=chain.then(()=>writeDoc(id)).then(()=>{if(sync==='error'){sync='account';note();}},()=>{sync='error';dirty.add(id);note();});}
+  for(const id of ids)chain=chain.then(()=>writeDoc(id)).then(()=>{if(sync==='error'){sync=window.claude?.use?'account':'site';note();}},()=>{if(!col)return;sync='error';dirty.add(id);note();});}
 function writeDoc(id){
   if(id==='meta')return col.doc('meta').set({updated:db.metaUpdated||1,json:JSON.stringify({words:db.words,gone:db.gone})});
   const p=db.players.find(x=>x.id===id);return p?col.doc('p_'+id).set({name:p.name,updated:p.updated||1,json:JSON.stringify(p)}):col.doc('p_'+id).delete();
 }
-// Outside Claude, a sync code stored on this device points at the family copy kept by the site's own Worker.
-const CODE_KEY='factdash.sync',codeChars='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const normCode=t=>String(t||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-const getCode=()=>{try{return normCode(localStorage.getItem(CODE_KEY));}catch{return '';}};
-const showCode=c=>c.replace(/(.{4})(?=.)/g,'$1-');
-const makeCode=()=>{const b=crypto.getRandomValues(new Uint8Array(16));return [...b].map(x=>codeChars[x%codeChars.length]).join('');};
-function remoteCol(code){
-  const call=async(method,path,body)=>{const r=await fetch('/api/sync'+path,{method,headers:{'x-sync-key':code,'content-type':'application/json'},body:body&&JSON.stringify(body),cache:'no-store'});
-    if(!r.ok)throw Error('sync '+r.status);return r.json();};
-  return {get:async()=>({docs:(await call('GET','')).docs.map(d=>({id:d.id,data:()=>d}))}),
-    doc:id=>({set:o=>call('PUT','/'+id,o),delete:()=>call('DELETE','/'+id)})};
-}
-async function connectFamily(){
-  const code=getCode();if(!code||!/^https?:$/.test(location.protocol)){sync='local';return note(true);}
-  try{const c=remoteCol(code),snap=await Promise.race([c.get(),new Promise((_,no)=>setTimeout(()=>no(Error('timeout')),10000))]);col=c;merge(snap.docs);sync='family';}
-  catch{col=null;sync='error';}
+// Outside Claude, signing in keeps the players in the site's own database. The browser holds the sign-in cookie; this key only remembers the name.
+const ACCT_KEY='factdash.account',online=/^https?:$/.test(location.protocol)&&!window.claude?.use;
+const getAcct=()=>{try{return Core.cleanLogin(localStorage.getItem(ACCT_KEY));}catch{return '';}};
+const setAcct=n=>{try{if(n)localStorage.setItem(ACCT_KEY,n);else localStorage.removeItem(ACCT_KEY);}catch{}};
+try{localStorage.removeItem('factdash.sync');}catch{}   // a sync code left by an earlier version
+const api=async(method,path,body)=>{const r=await fetch('/api/'+path,{method,headers:{'content-type':'application/json'},body:body&&JSON.stringify(body),cache:'no-store'});
+  if(r.status===401&&path.startsWith('sync'))signedOut();
+  if(!r.ok)throw Object.assign(Error('api '+r.status),{status:r.status});return r.json();};
+function signedOut(){if(!getAcct())return;setAcct('');col=null;sync='local';ui.syncMsg='This device was signed out. Sign in again to keep saving online.';note(true);}
+const remoteCol={get:async()=>({docs:(await api('GET','sync')).docs.map(d=>({id:d.id,data:()=>d}))}),doc:id=>({set:o=>api('PUT','sync/'+id,o),delete:()=>api('DELETE','sync/'+id)})};
+async function connectSite(){
+  if(!online||!getAcct()){sync='local';return note(true);}
+  try{const snap=await Promise.race([remoteCol.get(),new Promise((_,no)=>setTimeout(()=>no(Error('timeout')),10000))]);col=remoteCol;merge(snap.docs);sync='site';}
+  catch{col=null;if(getAcct())sync='error';}
   note(true);
 }
+// Signs in or creates the account, then merges this device's players with the account's. The message changes in place so the typed password is kept.
+async function signIn(path){
+  const tell=t=>{ui.syncMsg=t;const el=document.getElementById('syncMsg');if(el)el.textContent=t;},raw=document.getElementById('acctName')?.value||'',name=Core.cleanLogin(raw),pw=document.getElementById('acctPw')?.value||'';ui.acctTry=raw;
+  if(!name)return tell('The name needs 3 or more letters or numbers and no spaces. An email address works too.');
+  if(pw.length<8)return tell('The password needs 8 or more characters.');
+  tell(path==='signup'?'Creating the account…':'Signing in…');
+  try{await api('POST',path,{name,key:await Core.passKey(name,pw)});}
+  catch(e){return tell({401:'That name and password do not match.',409:'That name is taken. Sign in, or pick another name.',429:'Too many wrong tries. Wait 15 minutes, then try again.',403:'New accounts are closed on this site.'}[e.status]||'Could not sign in. Check the connection and try again.');}
+  setAcct(name);ui.acctTry='';ui.syncMsg='';sync='checking';render();await connectSite();
+  if(sync==='site')ui.syncMsg=path==='signup'?'Account made. Players are saved online from now on.':'Signed in. Players are saved online from now on.';render();
+}
 async function connect(){
-  if(!window.claude?.use)return connectFamily();
+  if(!window.claude?.use)return connectSite();
   try{
     const [store2,user]=await Promise.all([claude.use('db'),claude.use('user')]),uid=store2&&user?await user.id():null;
     if(!uid){sync='local';return note(true);}
@@ -259,18 +268,18 @@ function merge(docs){
 }
 // Redraw after data arrives, keeping whatever is being typed. Mid-round, only the status line changes.
 function note(redraw){
-  if(redraw&&view!=='play'&&view!=='done'){const keep=[...app.querySelectorAll('input[type=text],textarea')].map(e=>[e.id,e.value]),focus=document.activeElement?.id;
+  if(redraw&&view!=='play'&&view!=='done'){const keep=[...app.querySelectorAll('input[type=text],input[type=password],textarea')].map(e=>[e.id,e.value]),focus=document.activeElement?.id;
     render();for(const [id,v] of keep){const e=document.getElementById(id);if(e)e.value=v;}if(focus)document.getElementById(focus)?.focus();return;}
   const el=document.getElementById('syncNote');if(el)el.textContent=statusText(true);
 }
 function statusText(short){
-  if(sync==='family')return short?'Synced across devices.':'Synced across devices after every round. Open Fact Dash on another device and enter the sync code below.';
+  if(sync==='site')return short?'Saved online.':'Saved online after every round. Sign in with the same name and password on any device to pick up where you left off.';
   if(sync==='account')return short?'Saved to your Claude account.':'Saved to your Claude account after every round. It stays between sessions and follows you to other devices.';
   if(sync==='checking')return 'Looking for saved players…';
-  if(sync==='error')return getCode()&&!window.claude?.use?(short?'Could not reach sync. Saved on this device for now.':'Could not reach sync just now. Changes are kept on this device and sent the next time the page opens with a connection.')
+  if(sync==='error')return !window.claude?.use?(short?'Could not reach the site. Saved on this device for now.':'Could not reach the site just now. Changes are kept on this device and sent the next time the page opens with a connection.')
     :short?'Could not reach your Claude account. Saved on this device for now.':'Could not reach your Claude account just now. Changes are kept on this device and sent when the page next opens.';
   return window.claude?.use?(short?'Saved in this browser only.':'Saved in this browser only. Open the page signed in to Claude to keep it between sessions, or save a CSV file.')
-    :(short?'Saved on this device.':'Saved on this device after every answer. Turn on sync below to share it with other devices, or save a CSV file for your own copy.');
+    :(short?'Saved on this device.':`Saved on this device after every answer. ${online?'Sign in under Online account to keep it online, or save':'Save'} a CSV file for your own copy.`);
 }
 const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
 function describe(d){const who=d.players.map(p=>`${p.name} (${plural(p.rounds.length,'round')})`),parts=[...(who.length?[who.join(', ')]:[]),...(d.words.length?[plural(d.words.length,'word')+' of your own']:[])];return `This file has ${parts.join(' and ')}.`;}
@@ -315,9 +324,7 @@ function whoView(){
   return `<header class="col"><h1>Fact Dash</h1><p class="soft">${db.players.length?'Who is playing?':'Math and words, one quick round at a time.'}</p></header>
     ${db.players.length?`<div class="who">${db.players.map(p=>`<button class="sheet" data-act="pick" data-v="${p.id}"><span class="av">${esc(p.av||AVS[0])}</span><h3>${esc(p.name)}</h3><span class="stat"><span class="star">★</span> ${p.stars}</span><span class="small soft">${Core.level(p.stars).name}</span></button>`).join('')}${ui.adding?'':'<button class="sheet new" data-act="add"><span class="av">＋</span><h3>New player</h3><span class="small soft">Start from zero</span></button>'}</div>`:''}
     ${ui.adding||!db.players.length?form:''}
-    ${window.claude?.use||getCode()?'':`<details class="sheet col"${ui.syncMsg||ui.syncTry?' open':''}><summary>Already use Fact Dash on another device?</summary>
-      <label class="col" for="syncIn"><span class="small soft">Enter its sync code to bring the players here</span><input type="text" id="syncIn" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" value="${esc(ui.syncTry||'')}"></label>
-      <div><button class="btn ghost" data-act="syncJoin">Use this code</button></div></details>`}
+    ${online&&!getAcct()?`<details class="sheet col"${!db.players.length||ui.syncMsg||ui.acctTry?' open':''}><summary>Sign in to save online</summary>${acctForm()}</details>`:''}
     <p class="small" id="syncMsg" aria-live="polite">${esc(ui.syncMsg||'')}</p>
     <p class="small soft" id="syncNote">${statusText(true)}</p>`;
 }
@@ -428,7 +435,7 @@ function settingsView(p){
     <div class="sheet col"><h3>My words</h3><p class="small soft">${db.words.length?`${db.words.length} of your own words, shared by every player.`:'Add this week\'s school words and they join the Words decks.'}</p><div><button class="btn ghost" data-act="go" data-v="words">${db.words.length?'Edit my words':'Add words'}</button></div></div>
     <div class="sheet col"><h3>On the iPhone</h3>${phone}</div>
     <div class="sheet col"><h3>How it works</h3><p class="small">Each card sits in one of six boxes. A quick right answer moves it up a box, and it comes back after 8 hours, then 2, 5, 12 and 30 days. A miss sends it back to box one and it returns within the same dash. New cards arrive in random order (or easiest first, if you choose that above), and only while fewer than five are still shaky. The clock stops while a missed card is being corrected. When you mark spoken answers, a quick answer gets an extra second and a half to allow for saying it aloud.</p><p class="small">Math cards carry a number strategy and a dot picture. Word cards carry a sound-alike picture or the word's real parts, plus a sentence.</p><p class="small soft">A speed round counts how many he gets right before the clock runs out. Practice gives the same cards with no clock. Each keeps its own best score. Three rounds a day is the target. Short and daily beats long and rare.</p></div>
-    ${window.claude?.use?'':syncSheet()}
+    ${online?accountSheet():''}
     <div class="sheet col"><h3>Saved data</h3><p class="small">${statusText()}</p><p class="small soft">A CSV file holds every player, every round played and every card's progress. Save one to keep your own copy or open it in a spreadsheet. Load one to bring the data back on any device.</p>
       <div class="row"><button class="btn ghost" data-act="csvSave">Save CSV file</button><button class="btn ghost" data-act="csvPick">Load CSV file</button><input type="file" id="csvFile" accept=".csv,text/csv" aria-label="CSV file to load" hidden></div>
       ${ui.pending?`<div class="row"><span class="grow"><b>Load this file?</b> ${esc(describe(ui.pending))} Players here with the same identity are replaced by the file's copy.</span><button class="btn" data-act="csvLoad">Load</button><button class="btn ghost" data-act="csvCancel">Cancel</button></div>`:''}
@@ -436,17 +443,18 @@ function settingsView(p){
     <div class="sheet col"><h3>Start over</h3><div class="row"><button class="btn ghost" data-act="confirm" data-v="reset">Erase ${esc(p.name)}'s progress</button><button class="btn ghost" data-act="confirm" data-v="remove">Remove ${esc(p.name)}</button></div>
       ${ask('reset','Erase all progress?','Erase')}${ask('remove','Remove this player?','Remove')}</div>`;
 }
-function syncSheet(){
-  const code=getCode();
-  if(code)return `<div class="sheet col"><h3>Sync across devices</h3><p class="small">${statusText()}</p>
-    <p class="small soft">Sync code. Anyone with this code can see and change the players, so keep it in the family.</p>
-    <p><b style="font-size:1.3rem;letter-spacing:.06em;word-break:break-all" id="syncCode">${esc(showCode(code))}</b></p>
-    <div class="row"><button class="btn ghost" data-act="syncCopy">Copy code</button><button class="btn ghost" data-act="syncRetry">Sync now</button><button class="btn ghost" data-act="syncOff">Stop syncing here</button></div>
+// One form serves both buttons: Sign in submits it, Create account makes a new account from the same two boxes.
+const acctForm=()=>`<form class="col" id="acctForm"><label class="col" for="acctName"><span class="small soft">Name or email</span><input type="text" id="acctName" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" value="${esc(ui.acctTry||'')}"></label>
+    <label class="col" for="acctPw"><span class="small soft">Password, 8 or more characters</span><input type="password" id="acctPw" name="password" autocomplete="current-password" maxlength="200"></label>
+    <div class="row"><button class="btn" type="submit">Sign in</button><button class="btn ghost" type="button" data-act="signUp">Create account</button></div></form>`;
+function accountSheet(){
+  const acct=getAcct();
+  if(acct)return `<div class="sheet col"><h3>Online account</h3><p class="small">${statusText()}</p>
+    <p class="small soft">Signed in as <b>${esc(acct)}</b>.</p>
+    <div class="row"><button class="btn ghost" data-act="syncRetry">Sync now</button><button class="btn ghost" data-act="signOut">Sign out</button></div>
     <p class="small" id="syncMsg" aria-live="polite">${esc(ui.syncMsg||'')}</p></div>`;
-  return `<div class="sheet col"><h3>Sync across devices</h3><p class="small soft">Keep players and progress on every phone and computer. Turn it on once, then enter the code it shows on each other device.</p>
-    <div><button class="btn" data-act="syncOn">Turn on sync</button></div>
-    <label class="col" for="syncIn"><span class="small soft">Already have a code from another device?</span><input type="text" id="syncIn" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" value="${esc(ui.syncTry||'')}"></label>
-    <div><button class="btn ghost" data-act="syncJoin">Use this code</button></div>
+  return `<div class="sheet col"><h3>Online account</h3><p class="small soft">Sign in to keep players and progress online. Use the same name and password on every phone and computer.</p>
+    ${acctForm()}
     <p class="small" id="syncMsg" aria-live="polite">${esc(ui.syncMsg||'')}</p></div>`;
 }
 function wordsView(){
@@ -541,15 +549,9 @@ const acts={
   reset:()=>{const p=me();Object.assign(p,{cards:{},rounds:[],best:{},stars:0,days:{}});save(p);ui.confirm=null;view='home';render();},
   remove:()=>{const id=db.cur;db.gone[id]=Date.now();db.players=db.players.filter(p=>p.id!==id);db.cur=null;push(id);saveMeta();ui.confirm=null;view='who';render();},
   unword:v=>{db.words=db.words.filter(w=>w.id!==v);db.players.forEach(p=>{if(p.cards['my:'+v]){delete p.cards['my:'+v];save(p);}});saveMeta();render();},
-  syncOn:async()=>{try{localStorage.setItem(CODE_KEY,makeCode());}catch{ui.syncMsg='This browser will not let the page keep a sync code.';return render();}
-    sync='checking';ui.syncMsg='Sync is on. Enter this code on your other devices.';render();await connectFamily();},
-  syncJoin:async()=>{const raw=document.getElementById('syncIn')?.value||'',c=normCode(raw);ui.syncTry=raw;
-    if(c.length!==16){ui.syncMsg='That code should have 16 letters and numbers.';return render();}
-    try{localStorage.setItem(CODE_KEY,c);}catch{ui.syncMsg='This browser will not let the page keep a sync code.';return render();}
-    sync='checking';ui.syncMsg='';render();await connectFamily();ui.syncMsg=sync==='family'?db.players.length?'Connected. Players from the other device appear on the first screen.':'Connected, but that code has no saved players yet. If you expected some, check the code for a typo.':'Could not reach sync. Check the code and the connection.';if(sync==='family')ui.syncTry='';else{try{localStorage.removeItem(CODE_KEY);}catch{}}render();},
-  syncRetry:async()=>{sync='checking';render();await connectFamily();ui.syncMsg=sync==='family'?'Synced.':'Could not reach sync just now.';render();},
-  syncCopy:async()=>{try{await navigator.clipboard.writeText(showCode(getCode()));ui.syncMsg='Copied.';}catch{ui.syncMsg='Could not copy. Select the code and copy it by hand.';}render();},
-  syncOff:()=>{try{localStorage.removeItem(CODE_KEY);}catch{}col=null;sync='local';ui.syncMsg='Sync is off on this device. Its data stays here.';render();},
+  signUp:()=>signIn('signup'),
+  syncRetry:async()=>{sync='checking';render();await connectSite();if(getAcct())ui.syncMsg=sync==='site'?'Synced.':'Could not reach the site just now.';render();},
+  signOut:async()=>{flush();await chain;api('POST','logout').catch(()=>{});setAcct('');col=null;sync='local';ui.syncMsg='Signed out. The players stay on this device.';render();},
   csvSave:()=>saveCSV(),csvPick:()=>document.getElementById('csvFile')?.click(),csvCancel:()=>{ui.pending=null;ui.msg='';render();},
   csvLoad:()=>{const d=ui.pending;if(!d)return;
     for(const p of d.players){delete db.gone[p.id];const i=db.players.findIndex(x=>x.id===p.id);if(i<0)db.players.push(p);else db.players[i]=p;save(p);}
@@ -558,6 +560,7 @@ const acts={
 };
 app.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(b&&acts[b.dataset.act])acts[b.dataset.act](b.dataset.v,b);});
 app.addEventListener('submit',e=>{e.preventDefault();
+  if(e.target.id==='acctForm')return signIn('login');
   if(e.target.id==='wordForm'){const val=id=>document.getElementById(id).value.trim(),w=val('cw'),def=val('cdef'),msg=document.getElementById('wordMsg');
     if(!w||!def){msg.textContent='Type the word and what it means.';document.getElementById(w?'cdef':'cw').focus();return;}
     if(db.words.some(x=>x.w.toLowerCase()===w.toLowerCase())){msg.textContent=`${w} is already in your list.`;return;}
@@ -575,7 +578,7 @@ document.addEventListener('keydown',e=>{if(view!=='play'||!G||e.metaKey||e.ctrlK
   if(/^[0-9]$/.test(k))key(k);else if(k==='backspace'){e.preventDefault();key('back');}});
 render();   // always opens on the player picker
 connect();
-document.addEventListener('visibilitychange',()=>{if(document.hidden)flush();else if(!window.claude?.use&&getCode()&&view!=='play'&&view!=='done')connectFamily();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)flush();else if(online&&getAcct()&&view!=='play'&&view!=='done')connectSite();});
 // Installed-app plumbing: offline cache and a request to keep saved progress from being cleared.
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)&&self===top)navigator.serviceWorker.register('sw.js').catch(()=>{});
 try{navigator.storage?.persist?.().catch(()=>{});}catch{}
