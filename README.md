@@ -5,7 +5,7 @@ A small site of kids' learning games at https://camden.games. Each game is a fol
 There are three games:
 
 - **Fact Dash** (`site/fact-dash/`): flash-card rounds for math facts and vocabulary, played with a grown-up.
-- **Brain Bricks** (`site/brain-bricks/`): a brick breaker. After each level the player answers three questions, and each right answer earns a power-up for the next level.
+- **Brain Bricks** (`site/brain-bricks/`): a brick breaker with six worlds of levels, special bricks and falling power-up capsules. After each level the player answers three questions, and each right answer is a pick from a shelf of boosts for the next level.
 - **Big Hops** (`site/big-hops/`): a hopper on a number line. Each adding or subtracting fact is a trip along the stones, and fewer hops win more gems.
 
 ## How the pieces fit
@@ -203,8 +203,8 @@ For the App Store later, the same folder can be wrapped with Capacitor on a Mac 
 | `site/sw.js` | Clears the offline copy left on devices from when Fact Dash was the whole site |
 | `site/fact-dash/index.html` | Fact Dash's interface and styles |
 | `site/shared/` | What every game shares: scheduler, question bank, profiles, styles (see "How the pieces fit") |
-| `site/brain-bricks/game.js` | Brain Bricks' logic with no page access: levels, ball and paddle, power-ups |
-| `site/brain-bricks/index.html` | Brain Bricks' screens: the field, the questions between levels, the rewards |
+| `site/brain-bricks/game.js` | Brain Bricks' logic with no page access: levels and worlds, ball and paddle, bricks, capsules, boosts, saved data |
+| `site/brain-bricks/index.html` | Brain Bricks' screens: start with level select and options, the field, the level summary, the questions between levels, the shelf of boosts |
 | `site/big-hops/game.js` | Big Hops' logic with no page access: turning a fact into a trip, scoring it, the number strategies |
 | `site/big-hops/index.html` | Big Hops' screens: the number line, the hopper, the gems |
 | `site/fact-dash/sw.js`, `site/fact-dash/manifest.webmanifest`, `site/fact-dash/icons/` | Installable-app shell and offline cache |
