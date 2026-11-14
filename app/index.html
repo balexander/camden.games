@@ -325,6 +325,7 @@ function whoView(){
     ${db.players.length?`<div class="who">${db.players.map(p=>`<button class="sheet" data-act="pick" data-v="${p.id}"><span class="av">${esc(p.av||AVS[0])}</span><h3>${esc(p.name)}</h3><span class="stat"><span class="star">★</span> ${p.stars}</span><span class="small soft">${Core.level(p.stars).name}</span></button>`).join('')}${ui.adding?'':'<button class="sheet new" data-act="add"><span class="av">＋</span><h3>New player</h3><span class="small soft">Start from zero</span></button>'}</div>`:''}
     ${ui.adding||!db.players.length?form:''}
     ${online&&!getAcct()?`<details class="sheet col"${!db.players.length||ui.syncMsg||ui.acctTry?' open':''}><summary>Sign in to save online</summary>${acctForm()}</details>`:''}
+    ${online&&getAcct()?`<div class="row"><span class="small soft grow">Signed in as <b>${esc(getAcct())}</b></span><button class="btn ghost" data-act="signOut">Sign out</button></div>`:''}
     <p class="small" id="syncMsg" aria-live="polite">${esc(ui.syncMsg||'')}</p>
     <p class="small soft" id="syncNote">${statusText(true)}</p>`;
 }
