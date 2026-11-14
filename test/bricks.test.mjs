@@ -137,7 +137,66 @@ test('the ball waits on the paddle until a tap, and no time passes while it wait
  assert.equal(B.launch(s),false,'a tap with nothing waiting does nothing');assert.equal(s.balls.length,1);
  assert.deepEqual(plain(B.step(s,0)),[]);assert.deepEqual(plain(B.step(s,-1)),[]);assert.deepEqual(plain(B.step(s,NaN)),[]);
  assert.deepEqual(plain(s),JSON.parse(JSON.stringify(s)),'the state is plain data');
- for(const key of ['level','world','lap','speedName','bricks','paddle','balls','capsules','shots','effects','wideAll','shield','lives','lost','score','combo','serving','over','speed','base','rally','time','idle','boosts','extraBall'])assert.ok(key in s,'the state has '+key);
+ for(const key of ['level','world','lap','speedName','bricks','paddle','balls','capsules','shots','effects','wideAll','shield','lives','lost','score','combo','serving','aimable','aim','over','speed','base','rally','time','idle','boosts','extraBall'])assert.ok(key in s,'the state has '+key);
+});
+
+test('the first serve of a level is aimed: the aim follows a point, clamped to 10 to 60 degrees either side',()=>{
+ const s=B.start(1),b=s.balls[0],px=s.paddle.x;assert.equal(s.aimable,true);assert.ok(s.aim>=B.MIN_AIM&&s.aim<=B.MAX_ANGLE,'it starts inside the range');
+ // A point up and to the right at 45 degrees, then the same on the left.
+ B.setAim(s,b.x+100,b.y-100);assert.ok(near(s.aim,Math.PI/4));
+ B.setAim(s,b.x-100,b.y-100);assert.ok(near(s.aim,-Math.PI/4));
+ // Too flat, level with the ball and below it all give the flattest angle on that side.
+ for(const [dx,dy] of [[200,-10],[200,0],[50,80]]){B.setAim(s,b.x+dx,b.y+dy);assert.equal(s.aim,B.MAX_ANGLE);B.setAim(s,b.x-dx,b.y+dy);assert.equal(s.aim,-B.MAX_ANGLE);}
+ // Too near straight up gives the steepest angle on that side; exactly above keeps the side it was on.
+ B.setAim(s,b.x+1,b.y-300);assert.equal(s.aim,B.MIN_AIM);B.setAim(s,b.x,b.y-300);assert.equal(s.aim,B.MIN_AIM);
+ B.setAim(s,b.x-1,b.y-300);assert.equal(s.aim,-B.MIN_AIM);B.setAim(s,b.x,b.y-300);assert.equal(s.aim,-B.MIN_AIM);
+ B.setAim(s,NaN,5);B.setAim(s,5,Infinity);assert.equal(s.aim,-B.MIN_AIM,'junk is ignored');
+ // Keys turn it, step over the straight-up gap, and stop at the flattest angle.
+ B.turnAim(s,.05);assert.equal(s.aim,B.MIN_AIM);B.turnAim(s,.2);assert.ok(near(s.aim,B.MIN_AIM+.2));B.turnAim(s,5);assert.equal(s.aim,B.MAX_ANGLE);
+ B.turnAim(s,-.5);B.turnAim(s,-.5);assert.equal(s.aim,-B.MIN_AIM);B.turnAim(s,-5);assert.equal(s.aim,-B.MAX_ANGLE);B.turnAim(s,NaN);assert.equal(s.aim,-B.MAX_ANGLE);
+ assert.equal(s.paddle.x,px,'aiming never moves the paddle');assert.equal(b.x,px);assert.equal(s.serving,true);
+});
+
+test('an aimed first launch leaves at the chosen angle and the level\'s speed, and the extra ball mirrors it',()=>{
+ for(const [n,speed,want] of [[1,'normal',310],[4,'fast',340*1.15]])for(const a of [-.9,-.3,.2,.75]){
+  const s=B.start(n,{speed,boosts:['ball']}),b=s.balls[0];B.setAim(s,b.x+Math.sin(a)*150,b.y-Math.cos(a)*150);assert.ok(near(s.aim,a));
+  // The random numbers are not used: the same aim gives the same shot whatever they are.
+  assert.equal(B.launch(s,()=>{throw new Error('an aimed serve is not random');}),true);
+  assert.ok(near(Math.atan2(b.vx,-b.vy),a),'the angle is the aim');assert.ok(near(Math.hypot(b.vx,b.vy),want),'at the level\'s speed');
+  const twin=s.balls[1];assert.equal(s.balls.length,2);assert.ok(near(Math.atan2(twin.vx,-twin.vy),-a),'the second ball goes the mirror-image way');assert.ok(near(Math.hypot(twin.vx,twin.vy),want));
+  // Once the ball has gone, the aim cannot be changed and there is no guide line.
+  B.setAim(s,0,0);B.turnAim(s,.3);assert.ok(near(s.aim,a));assert.deepEqual(plain(B.aimPath(s)),[]);
+ }
+});
+
+test('after a lost life the serve is not aimed: the paddle slides, a tap launches at a random angle as before',()=>{
+ const s=B.start(1);B.setAim(s,300,300);const px=s.paddle.x;assert.equal(s.paddle.x,px,'aiming does not move the paddle');
+ B.launch(s,none);assert.ok(types(drop(s)).includes('lost'));
+ assert.equal(s.serving,true);assert.equal(s.aimable,false);assert.deepEqual(plain(B.aimPath(s)),[]);
+ const aim=s.aim;B.setAim(s,10,10);B.turnAim(s,-.4);assert.equal(s.aim,aim,'the aim is left alone');
+ B.movePaddle(s,220);assert.equal(s.paddle.x,220,'sliding moves the paddle');assert.equal(s.balls[0].x,220,'and the waiting ball');
+ // The old serve: a side from the first random number, .25 to .55 radians from the second.
+ const seq=v=>{let i=0;return()=>v[i++];};
+ B.launch(s,seq([.2,.5]));assert.ok(near(Math.atan2(s.balls[0].vx,-s.balls[0].vy),-.4));assert.ok(near(Math.hypot(s.balls[0].vx,s.balls[0].vy),310));
+ drop(s);assert.equal(s.aimable,false);B.launch(s,seq([.7,0]));assert.ok(near(Math.atan2(s.balls[0].vx,-s.balls[0].vy),.25));
+ // A new level is aimed again.
+ assert.equal(B.start(2).aimable,true);
+});
+
+test('the guide line runs to the first brick, by way of one side wall at most',()=>{
+ const s=field(['........','.....1..']),b=s.balls[0],k=at(s,1,5),R=B.BALL_R;
+ // Straight at the brick: two points, ending a ball's radius below it.
+ B.setAim(s,k.x+k.w/2,k.y+k.h);let p=B.aimPath(s);assert.equal(p.length,2);assert.deepEqual(plain(p[0]),{x:b.x,y:b.y});
+ assert.ok(p[1].x>k.x-R&&p[1].x<k.x+k.w+R&&p[1].y>k.y+k.h-2&&p[1].y<=k.y+k.h+R+2,'it stops at the brick');
+ assert.ok(near(Math.atan2(p[1].x-p[0].x,p[0].y-p[1].y),s.aim,.01),'along the aim');
+ // To the left there is nothing: it bounces off the left wall once and ends at the ceiling.
+ B.setAim(s,0,300);p=B.aimPath(s);assert.equal(p.length,3);assert.equal(p[1].x,R);assert.ok(p[2].x>p[1].x,'it turns back at the wall');assert.equal(p[2].y,R);
+ // At the flattest angle it meets both side walls: the line ends at the second.
+ B.turnAim(s,-5);p=B.aimPath(s);assert.equal(p.length,3);assert.equal(p[1].x,R);assert.equal(p[2].x,B.W-R);assert.ok(p[2].y>R);
+ // A broken brick is not in the way.
+ k.hp=0;B.setAim(s,k.x+k.w/2,k.y+k.h);p=B.aimPath(s);assert.ok(p.at(-1).y<k.y,'it carries on past a broken brick');
+ // The real ball follows the line: launched, it hits what the line pointed at.
+ const t=field(['........','.....1..']);B.setAim(t,k.x+k.w/2,k.y+k.h);B.launch(t,none);assert.ok(types(run(t,3)).includes('won'));
 });
 
 test('missing the ball costs a life, three misses end the level, and then nothing moves',()=>{

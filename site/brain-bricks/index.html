@@ -225,14 +225,14 @@ function startView(){
       <span>Questions</span>${seg('subject',g.subject,[['math','Math'],['words','Words']])}
       <span>Ball</span>${seg('speed',g.speed,[['chill','Chill'],['normal','Normal'],['fast','Fast']])}
       <span>Sound</span>${seg('sound',me.set.sound?'on':'off',[['on','On'],['off','Off']])}</div>
-      <p class="small soft">Slide to move. Tap to launch. After each level, ${B.QUIZ} questions: each right answer is a boost for the next level.</p></div>`;
+      <p class="small soft">Drag to aim the first shot. Slide to move. After each level, ${B.QUIZ} questions: each right answer is a boost for the next level.</p></div>`;
 }
 function playView(){
   const w=B.world(S.level),first=S.level===w.first;
   return `<div class="hud"><div class="top"><button class="ib" data-act="pause" aria-label="Pause">${svg('pause')}</button>
       <span class="lv grow"><b>Level ${S.level}</b><small>${esc(w.name)}</small></span><span class="stat" id="score">${S.score}</span><span id="lives" aria-label="Lives"></span></div>
     <div class="fx"><span id="fx" class="row" style="gap:6px;flex-wrap:nowrap"></span><span id="combo" aria-live="off"></span></div></div>
-    <div class="stage"><div class="wrap"><canvas id="field" aria-label="Brick field. Slide to move the paddle, tap to launch the ball."></canvas>
+    <div class="stage"><div class="wrap"><canvas id="field" aria-label="Brick field. Drag to aim the first shot and let go to shoot. Then slide to move the paddle."></canvas>
       <div class="banner" id="banner" style="--c:${esc(w.colors[0])}">${first?`<small>World ${w.number}${w.lap?` · Lap ${w.lap+1}`:''}</small><b>${esc(w.name)}</b><span>${esc(w.intro)}</span>`:`<b>Level ${S.level}</b>`}</div></div>
       <p class="small soft hint">Slide anywhere to move</p></div>
     <div class="pause" id="pause" hidden><div class="sheet col center"><h2>Paused</h2><button class="btn go" data-act="resume">Keep playing</button>
@@ -264,7 +264,7 @@ function shelfMarks(){
 }
 
 /* ---------- the brick field ---------- */
-let ctx=null,scale=1,fieldLeft=0,K={},parts=[],flash=new Map(),trails=new WeakMap(),shake=0,kick=0,glare=0,pop=null,made=0,hudWas={};
+let ctx=null,scale=1,fieldLeft=0,fieldTop=0,aimBy=null,K={},parts=[],flash=new Map(),trails=new WeakMap(),shake=0,kick=0,glare=0,pop=null,made=0,hudWas={};
 const MAXP=calm?30:240,rnd=Math.random;
 function colours(){const css=getComputedStyle(document.documentElement),v=n=>css.getPropertyValue(n).trim();K={ink:v('--ink'),soft:v('--soft'),blue:v('--blue'),card:v('--card'),amber:v('--amber'),rows:B.world(S.level).colors};}
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(view==='play'){colours();draw(performance.now()/1000);}});
@@ -275,12 +275,20 @@ function setupField(){
     // The field takes the room under the HUD, less a strip at the bottom where a thumb can rest without covering the paddle.
     scale=Math.max(.3,Math.min(Math.min(stage.clientWidth-4,760)/B.W,(stage.clientHeight-36)/B.H));const dpr=Math.min(devicePixelRatio||1,3);
     c.style.width=B.W*scale+'px';c.style.height=B.H*scale+'px';c.width=Math.round(B.W*scale*dpr);c.height=Math.round(B.H*scale*dpr);hud.style.width=B.W*scale+4+'px';
-    ctx=c.getContext('2d');ctx.setTransform(scale*dpr,0,0,scale*dpr,0,0);fieldLeft=c.getBoundingClientRect().left+2;draw(performance.now()/1000);};
-  const at=e=>(e.clientX-fieldLeft)/scale;
+    ctx=c.getContext('2d');ctx.setTransform(scale*dpr,0,0,scale*dpr,0,0);const box=c.getBoundingClientRect();fieldLeft=box.left+2;fieldTop=box.top+2;draw(performance.now()/1000);};
+  const at=e=>(e.clientX-fieldLeft)/scale,aimAt=e=>B.setAim(S,at(e),(e.clientY-fieldTop)/scale),aimed=()=>S.serving&&S.aimable&&!S.over;
   // The whole screen steers, so a finger resting below the field does not cover the paddle.
-  app.onpointerdown=e=>{wake();if(view!=='play'||paused||e.target.closest('button,a'))return;e.preventDefault();B.movePaddle(S,at(e));tap();};
-  app.onpointermove=e=>{if(view==='play'&&!paused&&(e.pointerType==='mouse'||e.buttons||e.pressure>0))B.movePaddle(S,at(e));};
-  onresize=fit;parts=[];flash=new Map();shake=kick=glare=0;pop=null;hudWas={};paused=false;endT=0;
+  // The first shot of a level is aimed: the finger (or the mouse) turns the guide line, the paddle stays put, and lifting
+  // fires. aimBy is the pointer that pressed to aim; only its lift fires. Every other serve is slide to move, tap to launch.
+  app.onpointerdown=e=>{wake();if(view!=='play'||paused||e.target.closest('button,a'))return;e.preventDefault();
+    if(aimed()){if(aimBy==null){aimBy=e.pointerId;aimAt(e);$('banner')?.classList.add('out');}return;}
+    B.movePaddle(S,at(e));tap();};
+  app.onpointermove=e=>{if(view!=='play'||paused)return;
+    if(aimed()){if(aimBy==null?e.pointerType==='mouse':e.pointerId===aimBy)aimAt(e);return;}
+    if(e.pointerType==='mouse'||e.buttons||e.pressure>0)B.movePaddle(S,at(e));};
+  app.onpointerup=e=>{if(e.pointerId!==aimBy)return;aimBy=null;if(view==='play'&&!paused&&aimed()){aimAt(e);tap();}};
+  app.onpointercancel=e=>{if(e.pointerId===aimBy)aimBy=null;};
+  onresize=fit;aimBy=null;parts=[];flash=new Map();shake=kick=glare=0;pop=null;hudWas={};paused=false;endT=0;
   fit();hud2();prev=0;cancelAnimationFrame(raf);raf=requestAnimationFrame(frame);
 }
 // A tap serves the ball, or lets go of balls the magnet holds.
@@ -290,13 +298,13 @@ function tap(){
   if(serving){sfx.serve();$('banner')?.classList.add('out');}else sfx.release();
 }
 function setPause(on){
-  if(view!=='play'||!S||S.over||paused===on)return;paused=on;$('pause').hidden=!on;keys={};
+  if(view!=='play'||!S||S.over||paused===on)return;paused=on;$('pause').hidden=!on;keys={};aimBy=null;
   if(on)cancelAnimationFrame(raf);else{document.activeElement?.blur?.();prev=0;raf=requestAnimationFrame(frame);}
 }
 function frame(t){
   if(view!=='play'||paused)return;
   const dt=prev?Math.min((t-prev)/1000,1/30):0;prev=t;made=0;
-  if(keys.ArrowLeft||keys.ArrowRight)B.movePaddle(S,S.paddle.x+(keys.ArrowRight?1:-1)*520*dt);
+  if(keys.ArrowLeft||keys.ArrowRight){const way=keys.ArrowRight?1:-1;if(S.serving&&S.aimable)B.turnAim(S,way*1.4*dt);else B.movePaddle(S,S.paddle.x+way*520*dt);}
   if(!S.over)for(const e of B.step(S,dt))happen(e);
   move(dt);draw(t/1000);hud2();
   // The level's last moment plays out before the summary.
@@ -426,6 +434,14 @@ function draw(t){
   if(fx.magnet>0){g.fillStyle=TINT.magnet;rr(px,py,10,B.PADDLE_H,[6,0,0,6]);g.fill();rr(px+pd.w-10,py,10,B.PADDLE_H,[0,6,6,0]);g.fill();
     g.strokeStyle=`rgba(184,134,11,${.35+.3*Math.sin(t*9)})`;g.lineWidth=2;g.beginPath();g.moveTo(px+4,py-3);g.lineTo(px+pd.w-4,py-3);g.stroke();}
   if(fx.laser>0){g.fillStyle=TINT.laser;rr(px+4.5,py-6,7,9,2);g.fill();rr(px+pd.w-11.5,py-6,7,9,2);g.fill();g.fillStyle='#fff';g.fillRect(px+7,py-6,2,3);g.fillRect(px+pd.w-9,py-6,2,3);}
+  // the guide line for an aimed serve: dots that drift along the path, and a ring where the ball would land
+  const path=B.aimPath(S);
+  if(path.length>1){
+    const GAPD=13,end=path.at(-1);let d=B.BALL_R+6+(calm?0:(t*26)%GAPD);g.fillStyle=K.ink;
+    for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],len=Math.hypot(b.x-a.x,b.y-a.y);
+      for(;d<len;d+=GAPD){g.globalAlpha=.6;dot(a.x+(b.x-a.x)*d/len,a.y+(b.y-a.y)*d/len,2.4);}d-=len;}
+    g.globalAlpha=.85;g.strokeStyle=K.blue;g.lineWidth=2;g.beginPath();g.arc(end.x,end.y,B.BALL_R,0,6.2832);g.stroke();g.globalAlpha=1;
+  }
   for(const b of S.balls){
     if(b.stuck&&!S.serving){   // held by the magnet: a ring, and dots that show where it will go
       const a=Math.max(-1,Math.min(1,b.off/(pd.w/2)))*1.05;g.fillStyle=TINT.magnet;for(let i=1;i<=5;i++){g.globalAlpha=1-i*.15;dot(b.x+Math.sin(a)*i*13,b.y-Math.cos(a)*i*13,2);}
@@ -445,7 +461,8 @@ function draw(t){
   const big=(text,y,size,c,a=1)=>{g.globalAlpha=a;g.font=`800 ${size}px "Baloo 2",system-ui,sans-serif`;g.lineWidth=5;g.strokeStyle=K.card;g.strokeText(text,B.W/2,y);g.fillStyle=c;g.fillText(text,B.W/2,y);g.globalAlpha=1;};
   if(pop){const f=pop.life/.7;big(pop.text,B.H*.66,calm?44:44+(1-f)*26,K.amber,Math.min(1,f*1.5)*.85);}
   if(glare>0&&!calm){g.fillStyle=`rgba(255,255,255,${glare*2.5})`;g.fillRect(-20,-20,B.W+40,B.H+40);}
-  if(S.serving&&!S.over){g.globalAlpha=.75+.25*Math.sin(t*4);g.fillStyle=K.soft;g.font='700 18px Nunito,system-ui,sans-serif';g.fillText('Tap to launch',B.W/2,B.PADDLE_Y-34);g.globalAlpha=1;}
+  if(S.serving&&!S.over){g.globalAlpha=.75+.25*Math.sin(t*4);g.fillStyle=K.soft;g.font='700 18px Nunito,system-ui,sans-serif';g.lineWidth=4;g.strokeStyle=K.card;g.lineJoin='round';
+    const hint=S.aimable?'Drag to aim, let go to shoot':'Tap to launch',hy=S.aimable?B.PADDLE_Y+34:B.PADDLE_Y-34;g.strokeText(hint,B.W/2,hy);g.fillText(hint,B.W/2,hy);g.globalAlpha=1;}
   if(S.over==='won'){const f=Math.min(1,((calm?1.2:1.8)-endT)/.3);big('Level clear!',B.H*.5,calm?40:26+14*f,K.blue,f);}
   g.restore();
 }

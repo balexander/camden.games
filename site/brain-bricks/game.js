@@ -12,6 +12,7 @@
 //   BRICK_W, BRICK_H             one brick (every brick in the state also carries its own x, y, w, h)
 //   PADDLE_Y, PADDLE_H, PADDLE_W the paddle's top edge, its thickness, and its normal width (state.paddle.w is the width now)
 //   BALL_R                       ball radius
+//   MIN_AIM, MAX_ANGLE           the nearest to straight up and the flattest an aimed serve may be, in radians (0.17, 1.05)
 //   CAP_W, CAP_H                 a falling capsule; its x, y are its centre
 //   SHOT_W, SHOT_H               a laser shot; its x, y are the middle of its top end
 //   LIVES (3), MAX_LIVES (5), MAX_BALLS (9), QUIZ (3 questions after a level, so at most 3 picks)
@@ -55,7 +56,17 @@
 //                   that counted), speed is 'chill' | 'normal' | 'fast', score is the score to carry in, and top is the
 //                   player's furthest level, used only to decide which boosts are unlocked (it defaults to n).
 //   movePaddle(state, x)   puts the paddle's centre at x, kept inside the walls. Balls waiting on it move with it.
-//   launch(state, rnd)     call on every tap. If a ball is waiting to be served it goes; otherwise every ball held by the
+//   setAim(state, x, y)    while an aimed serve waits (state.serving and state.aimable), points the aim from the waiting
+//                   ball towards the field point (x, y). The angle is kept between MIN_AIM (0.17, about 10 degrees) and
+//                   MAX_ANGLE (1.05, about 60 degrees) from straight up, on the side the point is on; a point level with or
+//                   below the ball gives the flattest angle on its side. Never moves the paddle. Does nothing otherwise.
+//   turnAim(state, by)     the same for keys: turns the aim by that many radians (positive is to the right), stepping over
+//                   the straight-up gap and stopping at the flattest angle.
+//   aimPath(state)  the guide line for an aimed serve: a list of points [{x, y}, ...] from the waiting ball along the aim to
+//                   the first brick or the ceiling the ball would meet, by way of at most one side wall (a second side wall
+//                   ends the line). An empty list when the serve is not aimed.
+//   launch(state, rnd)     call to fire. If a ball is waiting to be served it goes: along state.aim when the serve is aimable,
+//                   otherwise at a random angle to one side as it always has. If no ball is waiting, every ball held by the
 //                   magnet is let go. Returns true if a ball left the paddle. Does nothing once the level is over.
 //   step(state, dt, rnd)   moves everything on by dt seconds and returns a list of events (below). While state.serving is
 //                   true or state.over is set, nothing moves and no time passes, so timed effects do not run down while the
@@ -77,12 +88,16 @@
 //   wideAll    true when the wide-paddle boost was picked (the paddle is wide all level, whatever effects.wide says)
 //   shield     true while the floor is up
 //   lives, lost (lives lost this level), score, combo (bricks broken since a ball last touched the paddle)
-//   serving    true while a ball waits on the paddle for a tap (the start of the level and after each lost life)
+//   serving    true while a ball waits on the paddle to be served (the start of the level and after each lost life)
+//   aimable    true while the serve that is waiting, or the one just made, is aimed by the player: the first serve of the
+//              level. After a lost life it is false: the paddle slides and a tap launches. (The one place that decides
+//              this is the line in serve() that sets it; make it always true there to aim every serve.)
+//   aim        the angle an aimable serve leaves at, in radians from straight up, positive to the right. It starts at 0.4.
 //   over       null while playing, then 'won' or 'lost'
 //   speed      the ball's speed right now; base is the level's speed before the rally speed-up and the slow effect
 //   rally      paddle hits since the last serve (every 6 add 2% to the speed, up to 20%)
 //   time       seconds of play so far; idle is seconds since a brick was last damaged
-//   boosts, extraBall (the second ball has not been launched yet)
+//   boosts, extraBall (the second ball has not been launched yet; it leaves with the first serve, the mirror-image way)
 //
 // EVENTS from step, in the order they happened. Every event has type; x and y are where it happened.
 //   {type:'wall', x, y}                          a ball bounced off a wall or the ceiling        (often)
@@ -125,6 +140,7 @@ const LIVES=3,MAX_LIVES=5,MAX_BALLS=9,QUIZ=3,MAX_LEVEL=999;
 const SPEEDS={chill:.85,normal:1,fast:1.15},SPEED_1=310,SPEED_STEP=10,SPEED_CAP=440,LAP_STEP=15,LAP_CAP=470;
 const RALLY_HITS=6,RALLY_STEP=.02,RALLY_MAX=10;      // every 6 paddle hits add 2%, ten times at most
 const SLOW=.7,CAP_FALL=120,SHOT_V=520,SHOT_EVERY=.45,HOLD=1.5,SPLIT=.4,MAX_ANGLE=1.05,MIN_RISE=.18;
+const MIN_AIM=.17,FIRST_AIM=.4;                      // an aimed serve: never nearer straight up than about 10 degrees
 const DROP_CHANCE=.06,STALL=12,NUDGE_ANGLE=1.25,BOMB_HITS=3,COMBO_STEP=3,COMBO_MAX=5;
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v)),speedOk=v=>typeof v==='string'&&Object.hasOwn(SPEEDS,v);
 
@@ -245,7 +261,7 @@ function start(n,opts){
   const has=id=>boosts.includes(id),base=speedFor(n,speedName);
   const s={level:n,world:w.index,lap:w.lap,speedName,bricks:level(n),paddle:{x:W/2,w:PADDLE_W},balls:[],capsules:[],shots:[],
     effects:{wide:0,slow:has('slow')?SLOW_START:0,laser:has('laser')?LASER_START:0,magnet:0,fire:0},wideAll:has('wide'),shield:has('shield'),
-    lives:LIVES+(has('life')?1:0),lost:0,score:Math.max(0,Math.floor(+o.score)||0),combo:0,serving:true,over:null,
+    lives:LIVES+(has('life')?1:0),lost:0,score:Math.max(0,Math.floor(+o.score)||0),combo:0,serving:true,aimable:true,aim:FIRST_AIM,over:null,
     base,speed:base,rally:0,time:0,idle:0,boosts,extraBall:has('ball'),shotIn:0,lifeDropped:false};
   fit(s);serve(s);return s;
 }
@@ -258,6 +274,8 @@ function fit(s){
 // Keeps a ball that is sitting on the paddle on it.
 function seat(s,b){const p=s.paddle,half=p.w/2;b.off=clamp(b.off,-half,half);b.x=clamp(p.x+b.off,BALL_R,W-BALL_R);b.y=PADDLE_Y-BALL_R;}
 function serve(s){
+  // Only the first serve of a level is aimed. To aim every serve, set aimable to true here.
+  s.aimable=s.lost===0;
   s.serving=true;s.rally=0;s.combo=0;s.shots=[];
   s.balls=[{x:s.paddle.x,y:PADDLE_Y-BALL_R,vx:0,vy:0,stuck:true,off:0,hold:0,fire:s.effects.fire>0}];fit(s);
 }
@@ -269,13 +287,40 @@ const bounceAngle=(s,b)=>clamp((b.x-s.paddle.x)/(s.paddle.w/2),-1,1)*MAX_ANGLE;
 function launch(s,rnd=Math.random){
   if(s.over)return false;
   if(s.serving){
-    s.serving=false;const b=s.balls[0];aim(s,b,(rnd()<.5?-1:1)*(.25+rnd()*.3));
+    s.serving=false;const b=s.balls[0];aim(s,b,s.aimable?s.aim:(rnd()<.5?-1:1)*(.25+rnd()*.3));
     // The extra-ball boost: the first launch of the level sends a second ball the other way.
     if(s.extraBall){s.extraBall=false;s.balls.push({...b,vx:-b.vx});}
     return true;
   }
   let any=false;for(const b of s.balls)if(b.stuck){aim(s,b,bounceAngle(s,b));any=true;}
   return any;
+}
+// The aim of a serve the player aims. The angle stays between MIN_AIM and MAX_ANGLE from straight up, on either side.
+const aiming=s=>!s.over&&s.serving&&s.aimable;
+function setAim(s,x,y){
+  if(!aiming(s)||!Number.isFinite(x)||!Number.isFinite(y))return;
+  const b=s.balls[0],a=Math.atan2(x-b.x,b.y-y),side=a<0||(a===0&&s.aim<0)?-1:1;
+  s.aim=side*clamp(Math.abs(a),MIN_AIM,MAX_ANGLE);
+}
+function turnAim(s,by){
+  if(!aiming(s)||!Number.isFinite(by)||!by)return;
+  const a=s.aim+by;s.aim=Math.abs(a)<MIN_AIM?(by>0?MIN_AIM:-MIN_AIM):clamp(a,-MAX_ANGLE,MAX_ANGLE);
+}
+// Walks the aim forward in small steps, as a ball would go, to the first brick or the ceiling.
+function aimPath(s){
+  if(!aiming(s))return [];
+  const b=s.balls[0],pts=[{x:b.x,y:b.y}],live=s.bricks.filter(k=>k.hp>0),STEP=2;
+  let x=b.x,y=b.y,dx=Math.sin(s.aim)*STEP,dy=-Math.cos(s.aim)*STEP,walls=0;
+  for(let i=0;i<2000;i++){
+    x+=dx;y+=dy;
+    if(x<BALL_R||x>W-BALL_R){
+      x=clamp(x,BALL_R,W-BALL_R);if(walls++)break;
+      dx=-dx;pts.push({x,y});continue;
+    }
+    if(y<BALL_R){y=BALL_R;break;}
+    if(live.some(k=>{const ex=x-clamp(x,k.x,k.x+k.w),ey=y-clamp(y,k.y,k.y+k.h);return ex*ex+ey*ey<=BALL_R*BALL_R;}))break;
+  }
+  pts.push({x,y});return pts;
 }
 function movePaddle(s,x){
   if(!Number.isFinite(x))return;
@@ -436,6 +481,6 @@ function record(g,s){
   if(s.over==='won'){o.stars[n]=Math.max(o.stars[n]||0,stars(s));o.level=Math.min(MAX_LEVEL,n+1);}else o.level=n;
   o.top=Math.max(o.top,o.level);return o;
 }
-return {W,H,COLS,SIDE,TOP,GAP,BRICK_W,BRICK_H,PADDLE_Y,PADDLE_H,PADDLE_W,BALL_R,CAP_W,CAP_H,SHOT_W,SHOT_H,LIVES,MAX_LIVES,MAX_BALLS,QUIZ,
-  SPEEDS,PICTURES,WORLDS,CAPSULES,SHELF,world,level,build,capsulesFor,charsFor,speedFor,shelf,start,movePaddle,launch,step,left,stars,clean,record};
+return {W,H,COLS,SIDE,TOP,GAP,BRICK_W,BRICK_H,PADDLE_Y,PADDLE_H,PADDLE_W,BALL_R,MIN_AIM,MAX_ANGLE,CAP_W,CAP_H,SHOT_W,SHOT_H,LIVES,MAX_LIVES,MAX_BALLS,QUIZ,
+  SPEEDS,PICTURES,WORLDS,CAPSULES,SHELF,world,level,build,capsulesFor,charsFor,speedFor,shelf,start,movePaddle,setAim,turnAim,aimPath,launch,step,left,stars,clean,record};
 })();
