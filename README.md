@@ -119,7 +119,7 @@ Quick flash-card rounds for math facts and vocabulary, built for an 8-year-old a
 - **Math:** adding and subtracting within 20 (switchable between numbers up to 10, 11 to 20, or all) and multiplying and dividing to 10. Every card shows a number strategy and a dot picture.
 - **Words:** 120 built-in vocabulary words in three levels, each with a sound-alike picture or its real word parts, plus a sentence. Grown-ups can add their own word lists.
 - **Two round types:** Practice (15 cards, no clock) or a timed Speed round (60 seconds by default).
-- **Spaced repetition:** each card sits in one of six boxes. A quick right answer moves it up, and it comes back after 8 hours, then 2, 5, 12 and 30 days. A miss sends it back to box one and it returns within the same round.
+- **Spaced repetition:** each card has a gap it is expected to survive. A quick right answer stretches the gap (2, 5, 12 and 31 days, up to 60), a slow one brings the card back sooner, and a miss shortens the gap and brings the card back within the same round. See "The scheduler" above.
 - **Players and progress:** any number of players, picked on startup, each with best scores, a score chart and a map of every card.
 - **Saved data:** progress is kept on the device after every answer. Sign in with a name and password (the site's home page, Fact Dash's first screen, or Grown-ups > Online account) and it is also kept online, so any device signed in to the same account shows the same players. Saved data saves everything as one CSV file.
 
