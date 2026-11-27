@@ -7,7 +7,7 @@ There are four games:
 - **Fact Dash** (`site/fact-dash/`): flash-card rounds for math facts and vocabulary, played with a grown-up.
 - **Brain Bricks** (`site/brain-bricks/`): a brick breaker with six worlds of levels, special bricks and falling power-up capsules. After each level the player answers three questions, and each right answer is a pick from a shelf of boosts for the next level.
 - **Big Hops** (`site/big-hops/`): a hopper on a number line. Each adding or subtracting fact is a trip along the stones, and fewer hops win more gems.
-- **Wonder Blocks** (`site/wonder-blocks/`): a falling-block game where some pieces are special. They blow up, melt into the gaps, zap a row and column, freeze time, squash the bottom rows or float through the stack into holes. A new kind is found with each level. It asks no questions and does not touch the cards.
+- **Wonder Blocks** (`site/wonder-blocks/`): a falling-block game where some pieces are special. They blow up, melt into the gaps, zap a row and column, freeze rows solid so they clear, squash the bottom rows or float through the stack into holes. A new kind is found with each level, and blocks blown up fill the level bar as well as rows cleared. It asks no questions and does not touch the cards.
 
 ## How the pieces fit
 

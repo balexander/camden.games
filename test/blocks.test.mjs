@@ -38,6 +38,8 @@ test('a new game: an empty well, a piece at the top and one waiting',()=>{
  assert.equal(s.board.length,B.ROWS);assert.ok(s.board.every(r=>r.length===B.COLS&&r.every(c=>c===null)));
  assert.equal(s.phase,'fall');assert.ok(s.piece&&s.next);assert.equal(s.level,1);assert.equal(s.score,0);assert.equal(s.speed,'chill');
  assert.ok(B.cells(s.piece).some(([,y])=>y===0),'the piece starts on the top row');
+ for(const sh of Object.keys(B.SHAPES)){const t=B.start({},seeded(3));t.next={shape:sh,kind:null};B.drop(t,seeded(3));t.board=pic();settle(t);
+  if(t.piece.shape===sh)assert.equal(Math.min(...B.cells(t.piece).map(c=>c[1])),0,sh+' starts touching the top');}
  assert.deepEqual(plain(s.kinds),['boom','melt']);
  assert.deepEqual(plain(B.start({kinds:['ghost','zap','nonsense'],speed:'zippy'},seeded(3)).kinds),['boom','melt','zap','ghost'],'kinds found before are in from the start');
  assert.equal(B.start({speed:'warp'},seeded(3)).speed,'chill');
@@ -46,7 +48,7 @@ test('a new game: an empty well, a piece at the top and one waiting',()=>{
 test('pieces come from a bag of seven, and every third or fourth is special',()=>{
  for(const seed of [1,2,3,4,5]){
   const rnd=seeded(seed),s=B.start({kinds:['zap','ice','anvil','ghost']},rnd),got=[];
-  for(let i=0;i<400;i++){got.push({...s.piece});s.board=pic();B.drop(s,rnd);settle(s);}
+  for(let i=0;i<400;i++){got.push({...s.piece});s.board=pic('#.........','..........');B.drop(s,rnd);settle(s);}   // a covered hole, so ghosts may come
   const plainOnes=got.filter(p=>!p.kind),counts={};for(const p of plainOnes)counts[p.shape]=(counts[p.shape]||0)+1;
   assert.deepEqual(Object.keys(counts).sort(),['I','J','L','O','S','T','Z']);
   for(const k of Object.keys(counts))assert.ok(counts[k]>25,k+' comes often enough: '+counts[k]);
@@ -57,6 +59,11 @@ test('pieces come from a bag of seven, and every third or fourth is special',()=
   for(let i=1;i<kinds.length;i++)assert.notEqual(kinds[i].kind,kinds[i-1].kind,'never the same kind twice running');
   for(const p of kinds){if(p.kind==='zap')assert.equal(p.shape,'D');else if(p.kind==='anvil')assert.equal(p.shape,'O');else assert.notEqual(p.shape,'D');}
   assert.ok(plainOnes.every(p=>p.shape!=='D'),'the single block is only ever a zap');}
+ // Ghosts need a covered hole to find. The piece after next is chosen as each piece lands.
+ assert.equal(B.holes(pic('####......')),false);assert.equal(B.holes(pic('#.........','..........')),true);assert.equal(B.holes(pic('#.........','#.........')),false);
+ const next=(rows,seed)=>{const s=game(rows,{shape:'O',x:8,y:0},{kinds:['zap','ice','anvil','ghost']});s.until=0;s.lastKind=null;B.drop(s,seeded(seed));return s.next.kind;};
+ const flat=new Set(),holey=new Set();for(let seed=1;seed<=200;seed++){flat.add(next(['####......'],seed));holey.add(next(['#.........','..........'],seed));}
+ assert.deepEqual([...flat].sort(),['anvil','boom','ice','melt','zap'],'no ghost while the stack has no covered hole');assert.ok(holey.has('ghost'));
 });
 
 test('moving stops at the walls and at other blocks',()=>{
@@ -75,6 +82,8 @@ test('turning: next to a wall the piece shifts over, and with no room it stays a
  const tight=game(['#.########','#.########','#.########','#.########'],{shape:'I',rot:1,x:-1,y:B.ROWS-4});   // down a one-wide shaft
  const before=plain(tight.piece);assert.equal(B.rotate(tight),false);assert.deepEqual(plain(tight.piece),before);
  const o=game([],{shape:'O',x:4,y:3});assert.equal(B.rotate(o),true);assert.equal(o.piece.x,4);
+ const j=game([],{shape:'J',x:4,y:5}),at=()=>B.cells(j.piece).map(String).sort().join(' '),first=at();
+ B.rotate(j,1);const cw=at();B.rotate(j,-1);assert.equal(at(),first,'a turn back undoes a turn');B.rotate(j,-1);assert.notEqual(at(),cw,'the two ways round are different');B.rotate(j,1);assert.equal(at(),first);
  const f=game(['..........'],{shape:'T',rot:0,x:4,y:B.ROWS-2});   // flat on the floor: turning lifts it a row
  assert.equal(B.rotate(f),true);assert.ok(B.cells(f.piece).every(([,y])=>y<B.ROWS));
 });
@@ -92,12 +101,17 @@ test('a piece falls a row at a time, rests for a moment, then sticks',()=>{
  assert.equal(s.board[B.ROWS-1][4],'O','a plain block is painted as its shape');
 });
 
-test('sliding a resting piece restarts its rest, but only so many times',()=>{
+test('a resting piece can be slid or turned loose again, but not for ever',()=>{
  const s=game([],{shape:'O',x:4,y:B.ROWS-2});
- for(let i=0;i<8;i++){B.step(s,.1);B.step(s,.1);B.step(s,.1);B.step(s,.1);assert.ok(B.move(s,i%2?1:-1));}
+ for(let i=0;i<8;i++){for(let j=0;j<4;j++)B.step(s,.1);assert.ok(B.move(s,i%2?1:-1));}
  assert.ok(s.piece&&s.piece.shape==='O'&&s.phase==='fall'&&s.pieces===1,'eight slides in, it is still loose');
  let stuck=false;for(let i=0;i<40&&!stuck;i++){for(let j=0;j<4;j++)B.step(s,.1);if(s.pieces>1)stuck=true;else B.move(s,i%2?1:-1);}
  assert.ok(stuck,'it sticks in the end however much it is slid');
+ // Turning a piece on the floor lifts it a row, and it lands again. That must run out too.
+ for(const sh of ['T','S','Z','J','L','I'])for(const speed of ['chill','zippy']){
+  const t=game([],{shape:sh,x:3,y:B.ROWS-3},{speed});let secs=0;
+  while(t.pieces===1&&secs<120){if(!B.fits(t,t.piece,0,1))B.rotate(t);B.step(t,.05);secs+=.05;}
+  assert.ok(t.pieces>1,sh+' sticks though it is turned every time it lands ('+speed+')');assert.ok(secs<60);}
 });
 
 test('soft drop is fast and hard drop lands at once; both score a little',()=>{
@@ -114,11 +128,11 @@ test('full rows clear, the rows above come down, and more rows at once score mor
  assert.deepEqual(types(ev),['drop','lock','lines','settle','spawn']);
  const l=ev.find(e=>e.type==='lines');assert.deepEqual(plain(l.rows),[B.ROWS-1]);assert.equal(l.removed.length,B.COLS);assert.equal(l.points,100);
  assert.deepEqual(show(one,2),['..........','#.......##'],'the row above came down with what was left of the square');
- assert.equal(one.lines,1);assert.equal(one.score,100+2*(B.ROWS-2));
+ assert.equal(one.lines,1);assert.equal(one.score,100+2*(B.ROWS-2));assert.equal(one.power,B.ROW);
  const four=game(['#########.','#########.','#########.','#########.'],{shape:'I',rot:1,x:7,y:0});const e4=land(four);
  assert.equal(e4.find(e=>e.type==='lines').points,800);assert.equal(four.lines,4);assert.equal(filled(four),0);
- assert.ok(types(e4).includes('level'),'four lines is a level');assert.equal(four.level,2);
- const lv=game(['########..','########..'],{shape:'O',x:8,y:0});lv.level=3;lv.lines=8;
+ assert.ok(types(e4).includes('level'),'four lines is a level');assert.equal(four.level,2);assert.equal(four.power,0);
+ const lv=game(['########..','########..'],{shape:'O',x:8,y:0});lv.level=3;
  assert.equal(land(lv).find(e=>e.type==='lines').points,900,'points are multiplied by the level');
  const split=game(['#########.','##........','#########.','##........'],{shape:'I',rot:1,x:7,y:0});land(split);   // the first and third rows of the picture fill and clear; the other two stay
  assert.deepEqual(show(split,2),['##.......#','##.......#']);
@@ -128,7 +142,7 @@ test('boom: blows up everything within two squares of its blocks, and what is ab
  const s=game(['###.......','###.......','###.......','###.......'],{shape:'D',kind:'boom',x:1,y:0});
  const ev=land(s);assert.deepEqual(types(ev),['drop','boom','settle','spawn']);
  const b=ev.find(e=>e.type==='boom');assert.equal(b.removed.length,6,'the two rows under it');assert.equal(b.zone.length,20,'five rows, and four columns as the wall cuts one off');
- assert.deepEqual(show(s,4),['..........','..........','###.......','###.......']);assert.equal(s.score,60+2*(B.ROWS-5));
+ assert.deepEqual(show(s,4),['..........','..........','###.......','###.......']);assert.equal(s.score,60+2*(B.ROWS-5));assert.equal(s.power,6,'each block blown up moves the level bar');assert.equal(s.lines,0);
  const t=game(['######....','######....','######....'],{shape:'I',kind:'boom',x:0,y:0});land(t);
  assert.deepEqual(show(t,3),['..........','..........','######....'],'a long bomb takes two rows, two blocks past its end');
  const hang=game(['.#........','.#........','.#........','.#........','###.......','###.......'],{shape:'D',kind:'boom',x:0,y:0});land(hang);
@@ -150,33 +164,36 @@ test('melt: each block drips down to rest, filling the gaps under the piece',()=
  assert.deepEqual(show(fill,2),['.....#....','.....#....'],'the two blocks with no gap under them are left');
 });
 
-test('zap: clears its whole row and column, and the row counts as a line',()=>{
+test('zap: clears its whole row and column',()=>{
  const s=game(['#.#.......','#.########','#.########'],{shape:'D',kind:'zap',x:1,y:0});const ev=land(s);
  assert.deepEqual(types(ev),['drop','zap','settle','spawn']);
  const z=ev.find(e=>e.type==='zap');assert.equal(z.removed.length,9,'the bottom row: nothing else was in its column');assert.equal(z.zone.length,B.COLS+B.ROWS-1);
- assert.deepEqual(show(s,3),['..........','#.#.......','#.########']);assert.equal(s.lines,1);assert.equal(s.score,90+2*(B.ROWS-1));
+ assert.deepEqual(show(s,3),['..........','#.#.......','#.########']);assert.equal(s.score,90+2*(B.ROWS-1));assert.equal(s.power,9);assert.equal(s.lines,0,'only rows the player fills count as lines');
  const col=game(['...#......','...#......','####.#####'],{shape:'D',kind:'zap',x:3,y:0});land(col);
- assert.equal(filled(col),8,'it landed on top of the column: that column and its own (empty) row went');assert.equal(col.lines,0,'no blocks in its row, so no line');
+ assert.equal(filled(col),8,'it landed on top of the column: that column and its own (empty) row went');
 });
 
-test('ice: lands as blocks, then five pieces fall slowly',()=>{
- const s=game([],{shape:'O',kind:'ice',x:4,y:0});const fast=B.interval(s);const ev=land(s);
- assert.deepEqual(types(ev),['drop','ice','spawn']);assert.equal(s.board[B.ROWS-1][4],'ice');assert.equal(s.slow,B.ICE);
- assert.ok(B.interval(s)>=fast*2,'falling is at least twice as slow');
- s.level=9;assert.ok(B.interval(s)>=1.4,'and never fast while frozen, even on a high level');s.level=1;
- for(let i=0;i<B.ICE;i++){assert.ok(s.slow>0,'piece '+(i+1)+' is slow');s.board=pic();B.drop(s,seeded(1));settle(s);}
- assert.equal(s.slow,0);assert.ok(Math.abs(B.interval(s)-fast)<1e-9);
+test('ice: every row it touches freezes solid and clears',()=>{
+ const s=game(['#.........','##...#....','#..#...###'],{shape:'O',kind:'ice',x:6,y:0});const ev=land(s);   // lands on the right, in the top two rows of the picture
+ assert.deepEqual(types(ev),['drop','ice','lines','settle','spawn']);
+ const i=ev.find(e=>e.type==='ice');assert.equal(i.zone.length,7+7-2+2-2,'the gaps of both rows');assert.equal(i.removed.length,0);
+ assert.deepEqual(plain(ev.find(e=>e.type==='lines').rows),[B.ROWS-3,B.ROWS-2]);assert.equal(ev.find(e=>e.type==='lines').points,300);
+ assert.deepEqual(show(s,3),['..........','..........','#..#...###'],'the row it did not touch is as it was');assert.equal(s.lines,2);
+ const tall=game([],{shape:'I',kind:'ice',rot:1,x:2,y:0});const et=land(tall);
+ assert.equal(et.find(e=>e.type==='lines').rows.length,4,'stood on end it freezes four rows');assert.equal(filled(tall),0);
+ const p=B.preview(game(['#.........'],{shape:'I',kind:'ice',x:3,y:0}));assert.equal(p.zone.length,B.COLS-5,'the hint shows the gaps that will fill');
 });
 
-test('anvil: squashes the bottom two rows, and they count as lines',()=>{
+test('anvil: squashes the bottom two rows and everything sinks',()=>{
  const s=game(['#.........','##........','###.......','####......'],{shape:'O',kind:'anvil',x:6,y:0});const ev=land(s);
  assert.deepEqual(types(ev),['drop','anvil','settle','spawn']);
  assert.deepEqual(show(s,4),['..........','..........','#.........','##........']);
  const a=ev.find(e=>e.type==='anvil');assert.equal(a.removed.length,3+4+4,'the two rows and the anvil itself, which was sitting in them');assert.equal(a.zone.length,2*B.COLS);
- assert.equal(s.lines,2);
+ assert.equal(s.power,11);assert.equal(s.lines,0);
  const top=game(['###.......','###.......','###.......','###.......'],{shape:'O',kind:'anvil',x:0,y:0});land(top);
  assert.deepEqual(show(top,4),['##........','##........','###.......','###.......'],'on a tall stack the anvil stays and the stack sinks under it');
  assert.equal(top.board[B.ROWS-4][0],'anvil');
+ const bare=game([],{shape:'O',kind:'anvil',x:4,y:0});land(bare);assert.equal(bare.power,4,'on an empty floor it only squashes itself');assert.equal(bare.level,1);
 });
 
 test('ghost: each block slips through into the deepest hole in its column',()=>{
@@ -194,17 +211,24 @@ test('ghost: each block slips through into the deepest hole in its column',()=>{
  const ef=land(fin);assert.ok(types(ef).includes('lines'),'filling a buried hole finishes the row');
 });
 
-test('every four lines is a level, and each level uncovers the next kind and sends it next',()=>{
+test('the level bar fills with every block that goes, and each level uncovers the next kind and sends it next',()=>{
+ assert.deepEqual([1,2,3,4,5,6,9,30].map(B.need),[40,50,60,70,80,80,80,80]);
  const s=game([],{shape:'I',rot:1,x:7,y:0});const found=[];
  for(let lv=2;lv<=8;lv++){
-  s.board=pic('#########.','#########.','#########.','#########.');s.piece={shape:'I',kind:null,rot:1,x:7,y:0};s.until=99;
-  const ev=land(s);assert.equal(s.level,lv);assert.deepEqual(plain(ev.find(e=>e.type==='level')),{type:'level',level:lv});
-  const u=ev.find(e=>e.type==='unlock');
-  if(u){found.push(u.kind);assert.equal(s.next.kind,u.kind,'the new kind is the very next piece');assert.ok(s.kinds.includes(u.kind));}
-  else assert.ok(lv>5,'nothing left to find after the sixth kind');}
+  for(let n=0;s.level<lv;n++){assert.ok(n<3,'two lots of four rows are enough for any level');
+   s.board=pic('#########.','#########.','#########.','#########.');s.piece={shape:'I',kind:null,rot:1,x:7,y:0};s.until=99;
+   const before=s.kinds.length,ev=land(s),u=ev.find(e=>e.type==='unlock');
+   if(s.level===lv){assert.deepEqual(plain(ev.find(e=>e.type==='level')),{type:'level',level:lv});
+    if(u){found.push(u.kind);assert.equal(s.next.kind,u.kind,'the new kind is the very next piece');assert.ok(s.kinds.includes(u.kind));}else assert.equal(before,6,'nothing left to find after the sixth kind');}
+   else assert.ok(!u&&!ev.some(e=>e.type==='level'));
+   assert.ok(s.power>=0&&s.power<B.need(s.level));}}
  assert.deepEqual(found,['zap','ice','anvil','ghost']);assert.deepEqual(plain(s.found),found);
  const known=game(['#########.','#########.','#########.','#########.'],{shape:'I',rot:1,x:7,y:0},{kinds:['zap']});
  assert.equal(land(known).find(e=>e.type==='unlock').kind,'ice','a player who already has zap finds ice at level 2');
+ const blast=game(Array(6).fill('##########'),{shape:'I',kind:'boom',x:3,y:0});blast.board[B.ROWS-6]=pic('..........')[0];blast.power=39;
+ const eb=land(blast);assert.equal(eb.filter(e=>e.type==='level').length,1,'a huge blast is still one level');assert.equal(blast.level,2);assert.ok(blast.power<B.need(2));
+ const bombs=game(['##########','##########','##########'],{shape:'I',kind:'boom',x:3,y:0});bombs.board[B.ROWS-3]=pic('..........')[0];
+ land(bombs);assert.equal(bombs.power,16,'bombs alone move the bar: no rows needed');
 });
 
 test('speed: each level is quicker, down to a floor, and the three speeds differ',()=>{
@@ -241,6 +265,7 @@ test('saved data is checked on the way in, and a finished game is added to it',(
   {best:1200,lines:0,games:3,speed:'zippy',kinds:['boom','melt','zap','ghost'],told:['boom','ice']});
  assert.deepEqual(plain(B.clean([1,2])),plain(B.clean({})));assert.equal(B.clean({speed:'x'}).speed,'chill');
  const d=B.clean({best:500,lines:9,games:1,kinds:['zap']}),s=B.start({kinds:d.kinds},seeded(1));s.score=800;s.lines=6;s.kinds.push('ice');
+ assert.equal(B.record(B.clean({best:800}),s),false,'matching the best is not beating it');
  assert.equal(B.record(d,s),true);assert.deepEqual(plain(d),{best:800,lines:9,games:2,speed:'chill',kinds:['boom','melt','zap','ice'],told:[]});
  s.score=100;assert.equal(B.record(d,s),false);assert.equal(d.best,800);assert.equal(d.games,3);
  assert.deepEqual(plain(B.clean(plain(d))),plain(d),'what is saved loads back the same');
@@ -276,7 +301,7 @@ test('a robot plays long games at every speed: the rules hold, every kind turns 
  for(const [seed,speed] of [[11,'chill'],[12,'normal'],[13,'zippy'],[14,'chill']]){
   const {s,pieces,seen,kinds}=robot(seed,{speed});
   assert.ok(pieces>=300,'the robot keeps going: '+pieces+' pieces');
-  assert.ok(s.level>=6,'level '+s.level);assert.deepEqual(plain(s.kinds),['boom','melt','zap','ice','anvil','ghost']);
+  assert.ok(s.level>=6,'level '+s.level);assert.ok(s.power>=0&&s.power<B.need(s.level));assert.deepEqual(plain(s.kinds),['boom','melt','zap','ice','anvil','ghost']);
   assert.deepEqual([...kinds].sort(),['anvil','boom','ghost','ice','melt','zap']);
   for(const t of ['drop','lock','lines','settle','level','unlock','spawn','boom','melt','zap','ice','anvil','ghost'])assert.ok(seen.has(t),'saw '+t);
   assert.ok(s.score>5000);}

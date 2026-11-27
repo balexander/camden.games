@@ -11,10 +11,14 @@
 //   boom   blows up everything within BLAST (2) squares of each of its blocks, itself included
 //   melt   each block drips straight down until it rests on something, so it fills the gaps under the piece
 //   zap    one small block: clears the whole row and the whole column it lands in
-//   ice    lands like a plain piece, then the next ICE pieces fall slowly
+//   ice    freezes every row it touches solid: the gaps in those rows fill with ice, so the rows clear
 //   anvil  a heavy square: when it lands the bottom CRUSH rows of the well are squashed away
-//   ghost  each block slips through the stack into the deepest empty cell of its column
+//   ghost  each block slips through the stack into the deepest empty cell of its column. It only comes when the
+//          stack has a covered hole for it to find
 // A game starts with the kinds in START (plus any found in earlier games). Each new level uncovers the next one.
+//
+// LEVELS. state.power fills towards need(state.level): BLOCK for every block that goes, whether in a cleared row or a
+// blast, so a full row is worth 10 and a weak player's bombs still move the bar. A level takes about four rows at first.
 //
 // PLAYING. start(opts) makes a state. The page calls step(state, seconds) every frame and move, rotate, soft and drop for
 // the buttons. step and drop return events for the page to show:
@@ -29,10 +33,9 @@
 // and 'over' when a new piece has no room.
 var Blocks=(()=>{
 const COLS=10,ROWS=16;
-const GOAL=4;        // lines for each level
+const ROW=10;        // power for a cleared row: one for each block in it, the same as a block blown up
 const LOCK=.5;       // seconds a piece rests before it sticks
-const RESETS=10;     // moves that may restart that rest, so a piece cannot be slid about for ever
-const ICE=5;         // pieces that fall slowly after an ice piece
+const RESETS=12;     // moves and landings that may restart that rest, so a piece cannot be kept loose for ever
 const CRUSH=2;       // rows an anvil squashes
 const BLAST=2;       // how far a boom reaches from each of its blocks
 const GONE='x';
@@ -42,17 +45,21 @@ const SHAPES={I:{n:4,c:[[0,1],[1,1],[2,1],[3,1]]},O:{n:2,c:[[0,0],[1,0],[0,1],[1
 const BAG=['I','O','T','S','Z','J','L'];
 // The special kinds in the order they are found. say is the one line shown the first time a kind appears.
 const KINDS=[
-  {id:'boom',name:'Boom',say:'Blows up every block it touches.'},
+  {id:'boom',name:'Boom',say:'Blows up the blocks around it.'},
   {id:'melt',name:'Melt',say:'Melts down and fills the gaps under it.'},
   {id:'zap',name:'Zap',say:'Zaps away its whole row and its whole column.'},
-  {id:'ice',name:'Ice',say:'Freezes time. The next blocks fall slowly.'},
+  {id:'ice',name:'Ice',say:'Freezes its rows solid, so they clear.'},
   {id:'anvil',name:'Heavy',say:'So heavy it squashes the bottom rows flat.'},
-  {id:'ghost',name:'Ghost',say:'Floats through blocks into the deepest holes.'}];
+  {id:'ghost',name:'Ghost',say:'Floats through blocks to fill hidden holes.'}];
 const IDS=KINDS.map(k=>k.id),START=['boom','melt'];
 // Seconds for a piece to fall one row at level 1, and the fastest it ever gets. Each level is 12% quicker.
 const SPEEDS={chill:[1.1,.4],normal:[.8,.2],zippy:[.5,.1]};
 const LINE=[0,100,300,500,800];
-const WAIT={boom:.4,zap:.4,melt:.35,ghost:.45,anvil:.45,ice:.3,settle:.16,lines:.28};
+const WAIT={boom:.4,zap:.4,melt:.35,ghost:.45,anvil:.45,ice:.4,settle:.16,lines:.28};
+// Power needed to finish a level: 40 at level 1, ten more each level, 80 at most.
+const need=level=>ROW*Math.min(8,3+Math.max(1,level));
+// True when some empty cell has a block above it.
+const holes=board=>{for(let x=0;x<COLS;x++){let roof=false;for(let y=0;y<ROWS;y++){if(board[y][x]&&board[y][x]!==GONE)roof=true;else if(roof)return true;}}return false;};
 const whole=v=>Number.isFinite(+v)?Math.max(0,Math.round(+v)):0;
 
 // The squares a piece covers, as [x,y].
@@ -66,17 +73,17 @@ const empty=()=>Array.from({length:ROWS},()=>Array(COLS).fill(null));
 function start(opts={},rnd=Math.random){
   const kinds=IDS.filter(k=>START.includes(k)||(Array.isArray(opts.kinds)&&opts.kinds.includes(k)));
   const s={board:empty(),piece:null,next:null,bag:[],score:0,lines:0,level:1,speed:SPEEDS[opts.speed]?opts.speed:'chill',
-    phase:'fall',wait:0,fallT:0,lockT:0,resets:0,soft:false,slow:0,until:2,lastKind:null,forced:null,kinds,found:[],pieces:0};
+    phase:'fall',wait:0,fallT:0,lockT:0,resets:0,soft:false,power:0,until:2,lastKind:null,forced:null,kinds,found:[],pieces:0};
   s.next=draw(s,rnd);spawn(s,[],rnd);
   return s;
 }
 // Chooses the piece after next. Shapes come from a shuffled bag of all seven, so none stays away for long. Every third or
-// fourth piece is special.
+// fourth piece is special, and never the same kind twice running when there is another to send.
 function draw(s,rnd){
   if(!s.bag.length){s.bag=BAG.slice();for(let i=s.bag.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[s.bag[i],s.bag[j]]=[s.bag[j],s.bag[i]];}}
   let shape=s.bag.pop(),kind=null;
   if(s.until<=0){
-    const pool=s.kinds.filter(k=>k!==s.lastKind),from=pool.length?pool:s.kinds;
+    const able=s.kinds.filter(k=>k!=='ghost'||holes(s.board)),pool=able.filter(k=>k!==s.lastKind),from=pool.length?pool:able;
     kind=s.forced||from[Math.min(from.length-1,Math.floor(rnd()*from.length))];
     s.forced=null;s.lastKind=kind;s.until=2+Math.floor(rnd()*2);
     if(kind==='zap'||kind==='anvil'){s.bag.push(shape);shape=kind==='zap'?'D':'O';}
@@ -92,8 +99,7 @@ function spawn(s,ev,rnd){
 }
 // Seconds for the falling piece to drop one row.
 function interval(s){
-  const [base,least]=SPEEDS[s.speed];let iv=Math.max(least,base*Math.pow(.88,s.level-1));
-  if(s.slow>0)iv=Math.max(iv*2.5,1.4);
+  const [base,least]=SPEEDS[s.speed],iv=Math.max(least,base*Math.pow(.88,s.level-1));
   return s.soft?Math.min(iv,.05):iv;
 }
 const landing=s=>{let dy=0;while(fits(s,s.piece,0,dy+1))dy++;return s.piece.y+dy;};
@@ -124,6 +130,7 @@ function apply(board,p){
   else if(k==='melt')for(const [x,y] of cs){let y1=y;while(y1+1<ROWS&&!board[y1+1][x])y1++;board[y1][x]='melt';moves.push({x,y0:y,y1,c:'melt'});}
   else if(k==='ghost')for(const [x,y] of cs){let y1=y;for(let j=ROWS-1;j>y;j--)if(!board[j][x]){y1=j;break;}board[y1][x]='ghost';moves.push({x,y0:y,y1,c:'ghost'});}
   else{for(const [x,y] of cs)board[y][x]=k||p.shape;
+    if(k==='ice')for(const y of new Set(cs.map(c=>c[1])))for(let x=0;x<COLS;x++)if(!board[y][x]){board[y][x]='ice';zone.push([x,y]);}
     if(k==='anvil')for(let j=ROWS-CRUSH;j<ROWS;j++)for(let i=0;i<COLS;i++)hit(i,j);}
   return {cells:cs,removed,moves,zone};
 }
@@ -136,11 +143,9 @@ function collapse(board){
   return moves;
 }
 function lock(s,ev){
-  const p=s.piece,k=p.kind;s.piece=null;s.soft=false;if(s.slow>0)s.slow--;
+  const p=s.piece,k=p.kind;s.piece=null;s.soft=false;
   const r=apply(s.board,p);
-  s.score+=10*r.removed.length;
-  if(k==='ice')s.slow=ICE;
-  if(k==='zap'||k==='anvil')s.lines+=new Set(r.removed.filter(c=>k==='anvil'||c.y===r.cells[0][1]).map(c=>c.y)).size;   // a row wiped out counts as a line
+  s.score+=10*r.removed.length;s.power+=r.removed.length;
   ev.push({type:k||'lock',shape:p.shape,...r});
   s.phase='fx';s.wait=WAIT[k]||0;
 }
@@ -152,10 +157,9 @@ function advance(s,ev,rnd){
   if(rows.length){
     const removed=[];for(const y of rows)for(let x=0;x<COLS;x++){removed.push({x,y,c:s.board[y][x]});s.board[y][x]=GONE;}
     const points=LINE[rows.length]*s.level;
-    s.score+=points;s.lines+=rows.length;ev.push({type:'lines',rows,removed,points});s.wait=WAIT.lines;return;
+    s.score+=points;s.lines+=rows.length;s.power+=ROW*rows.length;ev.push({type:'lines',rows,removed,points});s.wait=WAIT.lines;return;
   }
-  const level=1+Math.floor(s.lines/GOAL);
-  if(level>s.level){s.level=level;ev.push({type:'level',level});
+  if(s.power>=need(s.level)){s.power=Math.min(s.power-need(s.level),need(s.level+1)-1);s.level++;ev.push({type:'level',level:s.level});   // one level a landing, however big
     const k=IDS.find(id=>!s.kinds.includes(id));
     if(k){s.kinds.push(k);s.found.push(k);s.forced=k;s.until=0;ev.push({type:'unlock',kind:k});}}
   spawn(s,ev,rnd);
@@ -169,7 +173,7 @@ function step(s,dt,rnd=Math.random){
   if(fits(s,p,0,1)){
     s.fallT+=dt;const iv=interval(s);
     while(s.fallT>=iv&&fits(s,p,0,1)){p.y++;s.fallT-=iv;if(s.soft)s.score++;}
-    if(!fits(s,p,0,1)){s.fallT=0;s.lockT=0;}
+    if(!fits(s,p,0,1)){s.fallT=0;if(s.resets<RESETS){s.lockT=0;s.resets++;}}   // landing again (after a turn lifted it) uses up a restart too
   }else{s.lockT+=dt;if(s.lockT>=LOCK){lock(s,ev);run(s,ev,rnd);}}
   return ev;
 }
@@ -193,5 +197,5 @@ function record(d,s){
   const beat=s.score>d.best;d.games++;d.best=Math.max(d.best,s.score);d.lines=Math.max(d.lines,s.lines);
   d.kinds=IDS.filter(k=>d.kinds.includes(k)||s.kinds.includes(k));return beat;
 }
-return {COLS,ROWS,GOAL,LOCK,ICE,CRUSH,BLAST,GONE,SHAPES,KINDS,START,SPEEDS,start,step,move,rotate,soft,drop,cells,fits,landing,interval,preview,apply,collapse,clean,record};
+return {COLS,ROWS,ROW,LOCK,CRUSH,need,holes,BLAST,GONE,SHAPES,KINDS,START,SPEEDS,start,step,move,rotate,soft,drop,cells,fits,landing,interval,preview,apply,collapse,clean,record};
 })();
